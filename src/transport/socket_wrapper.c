@@ -1,11 +1,12 @@
 // glibc system call wrapper
+
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <stdio.h>
 
 // Function pointers to the original glibc functions.
-static ssize_t (*real_send)(int sockfd, const void *buf, size_t len, int flags) = NULL;
-static ssize_t (*real_recv)(int sockfd, void *buf, size_t len, int flags) = NULL;
+static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
+static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
 
 ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
     printf("send: sockfd = %d, buf = %p, len = %zu, flags = %d.\n",
