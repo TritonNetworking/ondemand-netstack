@@ -51,6 +51,11 @@ void vlog_level(int level, const char *format, va_list arg) {
     pthread_mutex_lock(&log_mutex);
 #endif
 
+#ifdef LOGGING_LEVEL
+    if (level < LOGGING_LEVEL)
+        return;
+#endif
+
     switch (level) {
 #ifdef MPI_VERSION
     #define PRINTTAG(name, color) \

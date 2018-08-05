@@ -34,8 +34,8 @@
 
 #define USE_PTHREAD 1
 
-#include "lib/logging.h"
 #include "dccs_config.h"
+#include "lib/logging.h"
 #include "dccs_message.h"
 #include "dccs_utils.h"
 
