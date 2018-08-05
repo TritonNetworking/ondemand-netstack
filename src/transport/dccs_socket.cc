@@ -29,6 +29,32 @@ using namespace std;
 int ipc_socket = -1;
 
 
+/* @section: function pointers to original glibc socket functions. */
+
+static bool real_socket_function_init = false;
+static int (*real_getaddrinfo)(const char *, const char *,
+    const struct addrinfo *, struct addrinfo **) = NULL;
+static void (*real_freeaddrinfo)(struct addrinfo *) = NULL;
+static int (*real_socket)(int, int, int) = NULL;
+static int (*real_connect)(int, const struct sockaddr *, socklen_t) = NULL;
+static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
+static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
+
+void load_real_socket_functions() {
+    if (real_socket_function_init)
+        return;
+
+    *(void **)(&real_getaddrinfo) = dlsym(RTLD_NEXT, "getaddrinfo");
+    *(void **)(&real_freeaddrinfo) = dlsym(RTLD_NEXT, "freeaddrinfo");
+    *(void **)(&real_socket) = dlsym(RTLD_NEXT, "socket");
+    *(void **)(&real_connect) = dlsym(RTLD_NEXT, "connect");
+    *(void **)(&real_send) = dlsym(RTLD_NEXT, "send");
+    *(void **)(&real_recv) = dlsym(RTLD_NEXT, "recv");
+
+    real_socket_function_init = true;
+}
+
+
 /* @section: IPC helper functions */
 
 /**
@@ -42,12 +68,14 @@ int ipc_send_raw(const char *buf, size_t length) {
     size_t total_sent = 0;
     struct sockaddr_un serveraddr;
 
+    log_verbose("ipc_send_raw | buf = %p, length = %zu.\n", buf, length);
+
     // A do/while(false) loop is used to make error cleanup easier.
     do {
         if (sd != -1)
             goto socket_connected;
 
-        sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        sd = real_socket(AF_UNIX, SOCK_STREAM, 0);
         if (sd < 0) {
             log_perror("IPC send raw: socket()");
             break;
@@ -57,7 +85,7 @@ int ipc_send_raw(const char *buf, size_t length) {
         serveraddr.sun_family = AF_UNIX;
         strcpy(serveraddr.sun_path, SERVER_PATH);
 
-        rv = connect(sd, (struct sockaddr *)&serveraddr,
+        rv = real_connect(sd, (struct sockaddr *)&serveraddr,
                         (socklen_t)SUN_LEN(&serveraddr));
         if (rv < 0) {
             log_perror("IPC send raw: connect()");
@@ -68,7 +96,7 @@ int ipc_send_raw(const char *buf, size_t length) {
 
 socket_connected:
         while (total_sent < length) {
-            bytes_sent = send(sd, buf, length, 0);
+            bytes_sent = real_send(sd, buf, length, 0);
             if (bytes_sent < 0) {
                 log_perror("IPC send raw: send()");
                 break;
@@ -77,9 +105,11 @@ socket_connected:
             total_sent += (size_t)bytes_sent;
         }
 
+        log_verbose("ipc_send_raw | return 0\n");
         return 0;
     } while (false);
 
+    log_verbose("ipc_send_raw | return -1\n");
     return -1;
 }
 
@@ -94,12 +124,14 @@ int ipc_recv_raw(char *buf, size_t length) {
     size_t total_recv = 0;
     struct sockaddr_un serveraddr;
 
+    log_verbose("ipc_recv_raw | buf = %p, length = %zu.\n", buf, length);
+
     // A do/while(false) loop is used to make error cleanup easier.
     do {
         if (sd != -1)
             goto socket_connected;
 
-        sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        sd = real_socket(AF_UNIX, SOCK_STREAM, 0);
         if (sd < 0) {
             log_perror("IPC send raw: socket()");
             break;
@@ -109,7 +141,7 @@ int ipc_recv_raw(char *buf, size_t length) {
         serveraddr.sun_family = AF_UNIX;
         strcpy(serveraddr.sun_path, SERVER_PATH);
 
-        rv = connect(sd, (struct sockaddr *)&serveraddr,
+        rv = real_connect(sd, (struct sockaddr *)&serveraddr,
                         (socklen_t)SUN_LEN(&serveraddr));
         if (rv < 0) {
             log_perror("IPC send raw: connect()");
@@ -120,7 +152,7 @@ int ipc_recv_raw(char *buf, size_t length) {
 
 socket_connected:
         while (total_recv < length) {
-            bytes_recv = recv(sd, buf, length, 0);
+            bytes_recv = real_recv(sd, buf, length, 0);
             if (bytes_recv < 0) {
                 log_perror("IPC recv raw: recv()");
                 break;
@@ -129,9 +161,11 @@ socket_connected:
             total_recv += (size_t)bytes_recv;
         }
 
+        log_verbose("ipc_recv_raw | return 0\n");
         return 0;
     } while (false);
 
+    log_verbose("ipc_recv_raw | return -1\n");
     return -1;
 }
 
@@ -166,27 +200,18 @@ int ipc_recv_response(struct IPCResponse *header, char *buf, size_t length) {
 }
 
 
+/* @section: Override syscalls */
+
 // Global map tracking dependencies
 map<tuple<struct sockaddr *, socklen_t>,
     tuple<string,string>> sockaddr_to_hostport;
 
-// Function pointers to the original glibc functions.
-
-static int (*real_getaddrinfo)(const char *, const char *,
-    const struct addrinfo *, struct addrinfo **) = NULL;
-static void (*real_freeaddrinfo)(struct addrinfo *) = NULL;
-static int (*real_socket)(int, int, int) = NULL;
-//static int (*real_connect)(int, const struct sockaddr *, socklen_t) = NULL;
-static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
-static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
-
-/* @section: Override syscalls */
-
 int getaddrinfo(const char *node, const char *service,
                 const struct addrinfo *hints, struct addrinfo **res) {
-    if (real_getaddrinfo == NULL) {
-        *(void **)(&real_getaddrinfo) = dlsym(RTLD_NEXT, "getaddrinfo");
-    }
+    load_real_socket_functions();
+
+    log_verbose("custom socket | getaddrinfo(%s, %s, %p, %p)\n",
+                    node, service, hints, res);
 
     int rv;
     struct addrinfo *p;
@@ -198,13 +223,15 @@ int getaddrinfo(const char *node, const char *service,
             make_tuple(hostname, port);
     }
 
+    log_verbose("custom socket | getaddrinfo(%s, %s, %p, %p) return %d\n",
+                    node, service, hints, res, rv);
     return rv;
 }
 
 void freeaddrinfo(struct addrinfo *res) {
-    if (real_freeaddrinfo == NULL) {
-        *(void **)(&real_freeaddrinfo) = dlsym(RTLD_NEXT, "freeaddrinfo");
-    }
+    load_real_socket_functions();
+
+    log_verbose("custom socket | freeaddrinfo(%p)\n", res);
 
     struct addrinfo *p;
     for (p = res; p != NULL; p = p->ai_next) {
@@ -212,28 +239,35 @@ void freeaddrinfo(struct addrinfo *res) {
     }
 
     real_freeaddrinfo(res);
+    log_verbose("custom socket | freeaddrinfo(%p) returned\n", res);
 }
 
 int socket(int domain, int type, int protocol) {
-    if (real_socket == NULL) {
-        *(void **)(&real_socket) = dlsym(RTLD_NEXT, "socket");
-    }
+    load_real_socket_functions();
+
+    log_verbose("custom socket | socket(%d, %d, %p)\n",
+                    domain, type, protocol);
 
     int rv;
     rv = real_socket(domain, type, protocol);
+    log_verbose("custom socket | socket(%d, %d, %p) returned %d\n",
+                    domain, type, protocol, rv);
     return rv;
 }
 
 
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    load_real_socket_functions();
+
     int rv;
 
-    log_debug("syscall connect(): sockfd = %d.\n", sockfd);
+    log_verbose("custom socket | connect(%d, %p, %zu)\n",
+                    sockfd, addr, addrlen);
 
     struct sockaddr *addr_copy = (struct sockaddr *)addr;
     auto it = sockaddr_to_hostport.find(make_tuple(addr_copy, addrlen));
     if (it == sockaddr_to_hostport.end()) {
-        log_error("syscall connect(): sockaddr not found.\n");
+        log_error("connect: sockaddr not found.\n");
         return -1;
     }
 
@@ -255,38 +289,44 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 
     rv = ipc_send_command(&request, payload);
     delete[] payload;
-    errif_return(rv, "Failed to send IPC command for connect().\n");
+    errif_return(rv, "connect | Failed to send IPC command for connect().\n");
 
     struct IPCResponse response;
     memset(&response, 0, sizeof response);
     char recvbuf[IPC_COMMAND_BUFLEN];
     rv = ipc_recv_response(&response, recvbuf, IPC_COMMAND_BUFLEN);
-    errif_return(rv, "Failed to recv IPC response for connect().\n");
+    errif_return(rv, "connect | Failed to recv IPC response for connect().\n");
 
     // Process response payload (optional).
 
-    log_debug("syscall connect(): sockfd = %d returned %d.\n", sockfd,
-                response.retval_int);
+    log_verbose("custom socket | connect(%d, %p, %zu) returned %d\n",
+                    sockfd, addr, addrlen, response.retval_int);
     return response.retval_int;
 }
 
 ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
-    printf("send: sockfd = %d, buf = %p, len = %zu, flags = %d.\n",
-        sockfd, buf, len, flags);
-    if (real_send == NULL) {
-        *(void **)(&real_send) = dlsym(RTLD_NEXT, "send");
-    }
+    load_real_socket_functions();
 
-    return real_send(sockfd, buf, len, flags);
+    log_verbose("custom socket | send(%d, %p, %zu, %d)\n",
+                    sockfd, buf, len, flags);
+
+    ssize_t numbytes = real_send(sockfd, buf, len, flags);
+
+    log_verbose("custom socket | send(%d, %p, %zu, %d) returned %d\n",
+                    sockfd, buf, len, flags, numbytes);
+    return numbytes;
 }
 
 ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
-    printf("recv: sockfd = %d, buf = %p, len = %zu, flags = %d.\n",
-        sockfd, buf, len, flags);
-    if (real_recv == NULL) {
-        *(void **)(&real_recv) = dlsym(RTLD_NEXT, "recv");
-    }
+    load_real_socket_functions();
 
-    return real_recv(sockfd, buf, len, flags);
+    log_verbose("custom socket | recv(%d, %p, %zu, %d)\n",
+                    sockfd, buf, len, flags);
+
+    ssize_t numbytes = real_recv(sockfd, buf, len, flags);
+
+    log_verbose("custom socket | recv(%d, %p, %zu, %d) returned %d\n",
+                    sockfd, buf, len, flags, numbytes);
+    return numbytes;
 }
 

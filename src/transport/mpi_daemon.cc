@@ -101,6 +101,8 @@ MPI_Datatype MPI_struct_request, MPI_struct_response;
 int init_mpi_struct_types() {
     int rv;
 
+    log_verbose("Initializing MPI struct types ...\n");
+
     // Initialize MPI struct for MPIRequest
     {
         const int numitems = 3;
@@ -145,6 +147,7 @@ int init_mpi_struct_types() {
         errif_return(rv, "Failed to commit MPI struct mpi_resp_hader.\n");
     }
 
+    log_verbose("Initialized MPI struct types.\n");
     return 0;
 }
 
@@ -155,6 +158,7 @@ struct MPIDaemonThreadArgument {
 
 void *thread_mpi_daemon(void *ptr) {
     t_md_init = true;
+    log_verbose("mpi_daemon | Started...\n");
 
     int rv;
     int client_rank;
@@ -164,8 +168,6 @@ void *thread_mpi_daemon(void *ptr) {
     //bool keep_listening = true;
     auto arg = (struct MPIDaemonThreadArgument *)ptr;
 
-    log_info("mpi_daemon | Started...\n");
-
     do {
         log_info("mpi_daemon | Waiting for request ...\n");
 
@@ -174,7 +176,7 @@ void *thread_mpi_daemon(void *ptr) {
         errif_break(rv, "mpi_daemon | MPI_Recv() failed: %d\n", rv);
         client_rank = status.MPI_SOURCE;
         log_info("mpi_daemon | Received request %s from %d.\n",
-                    to_string(request.operation), client_rank);
+                    to_c_str(request.operation), client_rank);
 
         response = {};
         response.src_port = request.dst_port;
@@ -188,10 +190,12 @@ void *thread_mpi_daemon(void *ptr) {
             default:
                 response.status = MPIStatus::INVAL;
                 log_warning("mpi_daemon | Unhandled operation %s.\n",
-                                to_string(request.operation));
+                                to_c_str(request.operation));
                 break;
         }
 
+        log_info("mpi_daemon | sending response %s...\n",
+                    to_c_str(response.status));
         rv = MPI_Send(&response, 1, MPI_struct_response, client_rank,
                         MPI_ANY_TAG, MPI_COMM_WORLD);
         errif_break(rv, "mpi_daemon | MPI_Send() failed: %d\n", rv);
@@ -199,9 +203,9 @@ void *thread_mpi_daemon(void *ptr) {
         log_info("mpi_daemon | Processed request from %d.\n", client_rank);
     } while (true);
 
-    log_info("mpi_daemon | Stopped.\n");
-
     delete arg;
+
+    log_verbose("mpi_daemon | Stopped.\n");
     return NULL;
 }
 
@@ -212,7 +216,7 @@ int init_mpi_daemon(int size, int rank) {
     const int root = 0;
     int rv;
 
-    log_info("Initializing MPI daemon ...\n");
+    log_info("init_mpi_daemon | Initializing ...\n");
 
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -221,15 +225,14 @@ int init_mpi_daemon(int size, int rank) {
         mpi_network_id = rand();
 
     rv = MPI_Bcast(&mpi_network_id, 1, MPI_INT, root, MPI_COMM_WORLD);
-    errif_return(rv, "Failed to broadcast MPI network ID.\n");
+    errif_return(rv, "init_mpi_daemon | Failed to broadcast MPI network ID.\n");
+    log_info("init_mpi_daemon | Exchanged MPI network ID %d.\n", mpi_network_id);
 
-    log_info("Exchanged MPI network ID %d.\n", mpi_network_id);
-
-    // TODO: write this
     auto arg = new MPIDaemonThreadArgument();
     rv = pthread_create(&t_md, NULL, thread_mpi_daemon, arg);
+    errif_return(rv, "init_mpi_daemon | Failed to create MPI thread.\n");
 
-    log_info("Initialized MPI daemon.\n");
+    log_info("init_mpi_daemon | Initialized.\n");
 
     return 0;
 }
@@ -247,6 +250,8 @@ int send_probe_message(const char *server, int *mpi_rank) {
     int rv;
     ssize_t numbytes;
     char s[INET6_ADDRSTRLEN];
+
+    log_verbose("probe client | server = %s.\n", server);
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -296,7 +301,8 @@ int send_probe_message(const char *server, int *mpi_rank) {
 
     close(sockfd);
 
-    log_info("Received mpi rank %d for hostname %s.\n", *mpi_rank, server);
+    log_info("probe client | Received mpi rank %d for hostname %s.\n",
+                *mpi_rank, server);
 
     return 0;
 }
@@ -317,7 +323,7 @@ void *thread_probe_server(void *ptr) {
     char s[INET6_ADDRSTRLEN];
     ssize_t numbytes;
 
-    log_info("probe server thread started.\n");
+    log_verbose("probe server | thread started.\n");
 
     while (!signaled) {
         sin_size = sizeof their_addr;
@@ -327,14 +333,14 @@ void *thread_probe_server(void *ptr) {
                 continue;
 
 log_debug("listenfd = %d.\n", listenfd);
-            log_perror("probe server accept");
+            log_perror("probe server | accept");
             continue;
         }
 
         inet_ntop(their_addr.ss_family,
             get_in_addr((struct sockaddr *)&their_addr),
             s, sizeof s);
-        log_info("[%d] probe server: got connection from %s\n", rank, s);
+        log_info("probe server | got connection from %s\n", s);
 
         int src_netid;
         int response = rank;
@@ -348,6 +354,7 @@ log_debug("listenfd = %d.\n", listenfd);
         if (src_netid != mpi_network_id)
             response = -1;
 
+        log_info("probe server | sending response %d\n", response);
         if (send(fd, &response, sizeof response, 0) == -1) {
             log_perror("probe server | send");
             log_error("probe server | Failed to respond to %s.\n", s);
@@ -358,8 +365,9 @@ failed:
         close(fd);
     }
 
-    log_info("probe server thread shut down.\n");
     delete arg;
+
+    log_verbose("probe server | thread shut down.\n");
     return NULL;
 }
 
@@ -374,7 +382,7 @@ int init_probe_server(int size, int rank) {
     int yes = 1;
     int rv;
 
-    log_info("Starting probe server ...\n");
+    log_verbose("probe server | Initializing ...\n");
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -441,7 +449,7 @@ int init_probe_server(int size, int rank) {
         return -1;
     }
 
-    log_info("probe server | Started\n");
+    log_verbose("probe server | Initialized\n");
 
     return 0;
 }
@@ -459,6 +467,7 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     int rv;
     ssize_t numbytes;
 
+    log_verbose("ipc_connect | Start\n");
     auto it = hostname_to_mpi_rank.find(hostname);
     if (it != hostname_to_mpi_rank.end()) {
         dst_rank = it->second;
@@ -487,15 +496,20 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     request.dst_port = htons(dst_port);
     request.operation = MPIOperation::CONNECT;
 
+    log_verbose("ipc_connect | Sending MPI request %s...\n",
+                    to_c_str(request.operation));
     rv = MPI_Send(&request, 1, MPI_struct_request, dst_rank, 0, MPI_COMM_WORLD);
     errif_return(rv, "ipc_connect | MPI_Send failed\n");
+    log_verbose("ipc_connect | MPI request sent.\n");
 
+    log_verbose("ipc_connect | Waiting for MPI response ...\n");
     struct MPIResponse response = {};
     rv = MPI_Recv(&response, 1, MPI_struct_response, dst_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     errif_return(rv, "ipc_connect | MPI_Recv failed\n");
+    log_verbose("ipc_connect | Received MPI response %s.\n",
+                    to_c_str(response.status));
 
     struct IPCResponse ipc_response = {};
-
     switch (response.status) {
         case MPIStatus::SUCCESS: {
             ipc_response.retval_int = 0;
@@ -509,16 +523,21 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
         }
         default: {
             // TODO: throw error
+            log_error("ipc_connect | Unhandled MPI response %s.\n", response.status);
+            ipc_response.retval_int = -1;
+            ipc_response.error = EINVAL;
             break;
         }
     }
 
     ipc_response.length = 0;
 
+    log_info("ipc_connect | Sending IPC response ...\n");
     numbytes = send(ipcsd, &ipc_response, sizeof ipc_response, 0);
     perrif_return(numbytes, "ipc_connect | send()\n");
     close(ipcsd);
 
+    log_verbose("ipc_connect | End\n");
     return 0;
 }
 
@@ -568,20 +587,21 @@ void *thread_ipc_handler(void *ptr) {
     char *buf = NULL;
     bool keep_listening = true;
 
+    log_verbose("ipc_handler | Start\n");
+
     do {
-        log_info("Waiting for IPC request ...\n");
         bytes = recv(sd, &request, sizeof request, 0);
         perrif_break(bytes, "process ipc request: recv()");
 
-        log_verbose("Received IPC request from sd %d: fd = %d, operation = %s, "
-            "payload length = %zu.\n",
-            sd, request.fd, to_string(request.operation), request.length);
+        log_info("ipc_handler | Received IPC request from sd %d: "
+                "fd = %d, operation = %s, payload length = %zu.\n",
+                sd, request.fd, to_c_str(request.operation), request.length);
 
         if (request.length > 0) {
             buf = new char[request.length];
             // TODO: partial result?
             bytes = recv(sd, buf, sizeof buf, 0);
-            perrif_break(bytes, "process ipc payload: recv()");
+            perrif_break(bytes, "ipc_handler | process ipc payload: recv()");
         }
 
         switch (request.operation) {
@@ -589,19 +609,20 @@ void *thread_ipc_handler(void *ptr) {
                 const char *hostname = buf;
                 uint16_t port = *((uint16_t *)(buf + strlen(buf) + 1));
                 rv = ipc_connect(sd, request.fd, hostname, port);
-                errif_break(rv, "Failed to handle %d:connect(%d, %s, %s)\n",
+                errif_break(rv, "ipc_handler | Failed to handle %d:"
+                            "connect(%d, %s, %s)\n",
                             sd, request.fd, hostname, port);
                 break;
             }
             case IPCOperation::CLOSE: {
                 rv = ipc_close(sd, request.fd);
-                errif_break(rv, "Failed to handle %d:close(%d)\n",
+                errif_break(rv, "ipc_handler | Failed to handle %d:close(%d)\n",
                                 sd, request.fd);
                 keep_listening = false;
             }
             default: {
-                log_warning("Unhandled IPC operation %s.\n",
-                                to_string(request.operation));
+                log_warning("ipc_handler | Unhandled IPC operation %s.\n",
+                                to_c_str(request.operation));
                 break;
             }
         }
@@ -611,15 +632,16 @@ void *thread_ipc_handler(void *ptr) {
             buf = NULL;
         }
 
-        log_info("Done with IPC request.\n");
+        log_info("ipc_handler | Done with IPC request.\n");
     } while (keep_listening);
 
     if (keep_listening)
-        log_warning("Unexpected closing of IPC socket %d.\n", sd);
+        log_warning("ipc_handler | Unexpected close of IPC socket %d.\n", sd);
 
     close(sd);
     free(ptr);
 
+    log_verbose("ipc_handler | End\n");
     return 0;
 }
 
@@ -634,12 +656,12 @@ int ipc_listen_loop(int size, int rank) {
     int rv;
     struct sockaddr_un serveraddr;
 
-    log_info("ipc_loop | Started IPC server ...\n");
+    log_verbose("ipc_loop | IPC server started ...\n");
     // A do/while(false) loop is used to make error cleanup easier.
     do {
         listen_sd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (listen_sd < 0) {
-            log_perror("socket");
+            log_perror("ipc_loop | socket");
             break;
         }
 
@@ -650,22 +672,22 @@ int ipc_listen_loop(int size, int rank) {
         rv = bind(listen_sd, (struct sockaddr *)&serveraddr,
                     (socklen_t)SUN_LEN(&serveraddr));
         if (rv < 0) {
-            log_perror("bind");
+            log_perror("ipc_loop | bind");
             break;
         }
 
         rv = listen(listen_sd, 10);
         if (rv < 0) {
-            log_perror("listen");
+            log_perror("ipc_loop | listen");
             break;
         }
 
-        log_info("Waiting for client connections ...\n");
+        log_info("ipc_loop | Waiting for client connections ...\n");
 
         while (!signaled) {
             sd = accept(listen_sd, NULL, NULL);
             if (sd < 0) {
-                log_perror("ipc accept");
+                log_perror("ipc_loop | accept");
                 sd = -1;
                 continue;
             }
@@ -674,7 +696,7 @@ int ipc_listen_loop(int size, int rank) {
             auto arg = new IPCThreadArgument();
             arg->sd = sd;
             rv = pthread_create(&t, NULL, thread_ipc_handler, arg);
-            errif(rv, "Failed to create thread to handle IPC request.\n");
+            errif(rv, "ipc_loop | Failed to create IPC handler thread.\n");
         }
 
         // TODO: clean up
@@ -686,6 +708,7 @@ int ipc_listen_loop(int size, int rank) {
         close(listen_sd);
 
     unlink(SERVER_PATH);
+    log_verbose("ipc_loop | IPC server stopped.\n");
     return 0;
 }
 
@@ -693,11 +716,12 @@ int ipc_listen_loop(int size, int rank) {
 /* @section: Main functions */
 
 void wait_for_threads() {
-    log_debug("Waiting for background threads to shut down.\n");
+    log_verbose("Waiting for background threads to shut down.\n");
     if (t_ps_init)
         pthread_join(t_ps, NULL);
     if (t_md_init)
         pthread_join(t_md, NULL);
+    log_verbose("Background threads shut down.\n");
 }
 
 int run(int size, int rank) {
@@ -713,20 +737,25 @@ int run(int size, int rank) {
         return rv;
     }
 
-    return ipc_listen_loop(size, rank);   // Should block
+    rv = ipc_listen_loop(size, rank);   // Should block
+
+    wait_for_threads();
+    return rv;
 }
 
 int main(int argc, char *argv[]) {
     int size, rank, rv;
 
     srand(static_cast<unsigned int>(time(NULL)));
-    init_mpi_struct_types();
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     mpi_rank = rank;
     mpi_size = size;
+    log_verbose("MPI initialize: size = %d, rank = %d.\n", size, rank);
+
+    init_mpi_struct_types();
 
     // TODO: this is not working yet.
     // MPI translates SIGINT to SIGTERM for child processes
@@ -735,7 +764,6 @@ int main(int argc, char *argv[]) {
     }
 
     rv = run(size, rank);
-    wait_for_threads();
 
     MPI_Finalize();
 

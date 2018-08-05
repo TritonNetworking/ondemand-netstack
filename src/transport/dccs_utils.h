@@ -120,6 +120,10 @@ string to_string(IPCOperation operation) {
     return m[operation];
 }
 
+const char *to_c_str(IPCOperation operation) {
+    return to_string(operation).c_str();
+}
+
 string to_string(MPIOperation operation) {
     static map<MPIOperation, string> m;
     if (m.size() == 0) {
@@ -132,16 +136,24 @@ string to_string(MPIOperation operation) {
     return m[operation];
 }
 
+const char *to_c_str(MPIOperation operation) {
+    return to_string(operation).c_str();
+}
+
 string to_string(MPIStatus status) {
     static map<MPIStatus, string> m;
     if (m.size() == 0) {
-#define INSERT_ELEMENT(p) m[p] = #p
+#define INSERT_ELEMENT(p) m[p] = std::string(#p)
         INSERT_ELEMENT(MPIStatus::SUCCESS);
         INSERT_ELEMENT(MPIStatus::CONNREFUSED);
 #undef INSERT_ELEMENT
     }
 
     return m[status];
+}
+
+const char *to_c_str(MPIStatus status) {
+    return to_string(status).c_str();
 }
 
 

@@ -54,7 +54,7 @@ void vlog_level(int level, const char *format, va_list arg) {
     switch (level) {
 #ifdef MPI_VERSION
     #define PRINTTAG(name, color) \
-        fprintf(stderr, "[%d%s%s%s]\t", mpi_rank, (color), (name), KNRM)
+        fprintf(stderr, "[%d:%s%s%s]\t", mpi_rank, (color), (name), KNRM)
 #else
     #define PRINTTAG(name, color) \
         fprintf(stderr, "[%s%s%s]\t", (color), (name), KNRM)
