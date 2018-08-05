@@ -13,6 +13,7 @@
 #define MPI_USE_ASYNC_VERB 1    // Whether to use asynchronous send/recv
 #define MPI_USE_WAIT 0          // Whether to use wait (or test)
 
+int mpi_rank;
 uint64_t clock_rate = 0;    // Clock ticks per second
 
 void wait_for_gdb(int rank) {
@@ -254,6 +255,7 @@ int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    mpi_rank = rank;
 
     //wait_for_gdb(rank);
 

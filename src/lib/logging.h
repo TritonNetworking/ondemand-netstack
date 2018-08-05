@@ -5,10 +5,17 @@
 #ifndef DCCS_LOGGING_H
 #define DCCS_LOGGING_H
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define DEBUG 1
+
+#ifdef MPI_VERSION
+extern int mpi_rank;
+#endif
 
 /* Logging functions */
 
@@ -30,36 +37,47 @@ void vlog_level(int level, const char *format, va_list arg) {
 #define KWHT  "\x1B[37m"
 
     switch (level) {
+#ifdef MPI_VERSION
+    #define PRINTTAG(name, color) \
+        fprintf(stderr, "[%d%s%s%s]\t", mpi_rank, (color), (name), KNRM)
+#else
+    #define PRINTTAG(name, color) \
+        fprintf(stderr, "[%s%s%s]\t", (color), (name), KNRM)
+#endif
+#define PRINTMSG(name, color) \
+    { \
+        PRINTTAG((name), (color)); \
+        vfprintf(stderr, format, arg); \
+    }
         case LOG_VERBOSE:
-            fprintf(stderr, "[%sverbose%s] ", KBLU, KNRM);
-            vfprintf(stderr, format, arg);
+            PRINTMSG("verbose", KBLU);
             break;
         case LOG_INFO:
-            fprintf(stdout, "[%sinfo%s]  ", KCYN, KNRM);
-            vfprintf(stdout, format, arg);
+            PRINTMSG("info", KCYN);
             break;
         case LOG_DEBUG:
 #if DEBUG
-            fprintf(stderr, "[%sdebug%s] ", KMAG, KNRM);
-            vfprintf(stderr, format, arg);
+            PRINTMSG("debug", KMAG);
 #endif
             break;
         case LOG_WARNING:
-            fprintf(stderr, "[%swarn%s]  ", KYEL, KNRM);
-            vfprintf(stderr, format, arg);
+            PRINTMSG("warn", KYEL);
             break;
         case LOG_ERROR:
-            fprintf(stderr, "[%serror%s] ", KRED, KNRM);
-            vfprintf(stderr, format, arg);
+            PRINTMSG("error", KRED);
             break;
         case LOG_PERROR:
-            fprintf(stderr, "[%serror%s] ", KRED, KNRM);
+            PRINTTAG("error", KRED);
             perror(format);
             break;
-        default:
-            fprintf(stderr, "[%s%d%s]    ", KGRN, level, KNRM);
-            vfprintf(stderr, format, arg);
+        default: {
+            char level_str[32];
+            bool success = sprintf(level_str, "%d", level) > 0;
+            PRINTMSG(success ? level_str : "unknown", KBLU);
             break;
+        }
+#undef PRINTMSG
+#undef PRINTTAG
     }
 }
 
