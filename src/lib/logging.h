@@ -17,6 +17,12 @@
 extern int mpi_rank;
 #endif
 
+#if USE_PTHREAD
+#include <pthread.h>
+static pthread_mutex_t log_mutex;
+static bool log_mutex_init = false;
+#endif
+
 /* Logging functions */
 
 #define LOG_VERBOSE 0
@@ -35,6 +41,15 @@ void vlog_level(int level, const char *format, va_list arg) {
 #define KMAG  "\x1B[35m"
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
+
+#if USE_PTHREAD
+    if (!log_mutex_init) {
+        pthread_mutex_init(&log_mutex, NULL);
+        log_mutex_init = true;
+    }
+
+    pthread_mutex_lock(&log_mutex);
+#endif
 
     switch (level) {
 #ifdef MPI_VERSION
@@ -79,6 +94,10 @@ void vlog_level(int level, const char *format, va_list arg) {
 #undef PRINTMSG
 #undef PRINTTAG
     }
+
+#if USE_PTHREAD
+    pthread_mutex_unlock(&log_mutex);
+#endif
 }
 
 void llog(int level, const char *format, ...) {

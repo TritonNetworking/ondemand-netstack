@@ -8,6 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#define USE_PTHREAD 1
 #include "dccs_utils.h"
 
 #define MPI_USE_ASYNC_VERB 1    // Whether to use asynchronous send/recv

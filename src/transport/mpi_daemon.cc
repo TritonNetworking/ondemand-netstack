@@ -32,6 +32,8 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
+#define USE_PTHREAD 1
+
 #include "lib/logging.h"
 #include "dccs_config.h"
 #include "dccs_message.h"
