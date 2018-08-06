@@ -108,7 +108,7 @@ uint16_t allocate_ephemeral_port() {
 string to_string(IPCOperation operation) {
     static map<IPCOperation, string> m;
     if (m.size() == 0) {
-#define INSERT_ELEMENT(p) m[p] = #p
+#define INSERT_ELEMENT(p) m[p] = std::string(#p)
         INSERT_ELEMENT(IPCOperation::NOP);
         INSERT_ELEMENT(IPCOperation::GETADDRINFO);
         INSERT_ELEMENT(IPCOperation::CONNECT);
@@ -127,7 +127,7 @@ const char *to_c_str(IPCOperation operation) {
 string to_string(MPIOperation operation) {
     static map<MPIOperation, string> m;
     if (m.size() == 0) {
-#define INSERT_ELEMENT(p) m[p] = #p
+#define INSERT_ELEMENT(p) m[p] = std::string(#p)
         INSERT_ELEMENT(MPIOperation::NOP);
         INSERT_ELEMENT(MPIOperation::CONNECT);
 #undef INSERT_ELEMENT
@@ -145,6 +145,7 @@ string to_string(MPIStatus status) {
     if (m.size() == 0) {
 #define INSERT_ELEMENT(p) m[p] = std::string(#p)
         INSERT_ELEMENT(MPIStatus::SUCCESS);
+        INSERT_ELEMENT(MPIStatus::INVAL);
         INSERT_ELEMENT(MPIStatus::CONNREFUSED);
 #undef INSERT_ELEMENT
     }

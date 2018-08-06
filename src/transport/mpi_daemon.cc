@@ -162,6 +162,7 @@ void *thread_mpi_daemon(void *ptr) {
 
     int rv;
     int client_rank;
+    short client_port;
     struct MPIRequest request;
     struct MPIResponse response;
     MPI_Status status;
@@ -172,11 +173,12 @@ void *thread_mpi_daemon(void *ptr) {
         log_info("mpi_daemon | Waiting for request ...\n");
 
         rv = MPI_Recv(&request, 1, MPI_struct_request, MPI_ANY_SOURCE,
-                        MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                        MPI_TAG_REQUEST, MPI_COMM_WORLD, &status);
         errif_break(rv, "mpi_daemon | MPI_Recv() failed: %d\n", rv);
         client_rank = status.MPI_SOURCE;
-        log_info("mpi_daemon | Received request %s from %d.\n",
-                    to_c_str(request.operation), client_rank);
+        client_port = request.src_port;
+        log_info("mpi_daemon | Received request %s from %d:%hu.\n",
+                    to_c_str(request.operation), client_rank, client_port);
 
         response = {};
         response.src_port = request.dst_port;
@@ -194,13 +196,14 @@ void *thread_mpi_daemon(void *ptr) {
                 break;
         }
 
-        log_info("mpi_daemon | sending response %s...\n",
-                    to_c_str(response.status));
+        log_info("mpi_daemon | sending response %s to %d:%hu...\n",
+                    to_c_str(response.status), client_rank, client_port);
         rv = MPI_Send(&response, 1, MPI_struct_response, client_rank,
-                        MPI_ANY_TAG, MPI_COMM_WORLD);
-        errif_break(rv, "mpi_daemon | MPI_Send() failed: %d\n", rv);
+                        MPI_TAG_RESPONSE, MPI_COMM_WORLD);
+        errif_break(rv, "mpi_daemon | MPI_Send failed: %d\n", rv);
 
-        log_info("mpi_daemon | Processed request from %d.\n", client_rank);
+        log_info("mpi_daemon | Processed request from %d:%hu.\n",
+                    client_rank, client_port);
     } while (true);
 
     delete arg;
@@ -492,19 +495,19 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     procfd_to_mpi[fd_key(ipcsd, fd)] = connection;
 
     struct MPIRequest request = {};
-    request.src_port = htons(src_port);
-    request.dst_port = htons(dst_port);
+    request.src_port = src_port;
+    request.dst_port = dst_port;
     request.operation = MPIOperation::CONNECT;
 
-    log_verbose("ipc_connect | Sending MPI request %s...\n",
-                    to_c_str(request.operation));
-    rv = MPI_Send(&request, 1, MPI_struct_request, dst_rank, 0, MPI_COMM_WORLD);
+    log_verbose("ipc_connect | Sending MPI request %s to %d:%hd...\n",
+                    to_c_str(request.operation), dst_rank, dst_port);
+    rv = MPI_Send(&request, 1, MPI_struct_request, dst_rank, MPI_TAG_REQUEST, MPI_COMM_WORLD);
     errif_return(rv, "ipc_connect | MPI_Send failed\n");
     log_verbose("ipc_connect | MPI request sent.\n");
 
     log_verbose("ipc_connect | Waiting for MPI response ...\n");
     struct MPIResponse response = {};
-    rv = MPI_Recv(&response, 1, MPI_struct_response, dst_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    rv = MPI_Recv(&response, 1, MPI_struct_response, dst_rank, MPI_TAG_RESPONSE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     errif_return(rv, "ipc_connect | MPI_Recv failed\n");
     log_verbose("ipc_connect | Received MPI response %s.\n",
                     to_c_str(response.status));
@@ -523,7 +526,8 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
         }
         default: {
             // TODO: throw error
-            log_error("ipc_connect | Unhandled MPI response %s.\n", response.status);
+            log_error("ipc_connect | Unhandled MPI response %s.\n",
+                        to_c_str(response.status));
             ipc_response.retval_int = -1;
             ipc_response.error = EINVAL;
             break;
@@ -535,7 +539,6 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     log_info("ipc_connect | Sending IPC response ...\n");
     numbytes = send(ipcsd, &ipc_response, sizeof ipc_response, 0);
     perrif_return(numbytes, "ipc_connect | send()\n");
-    close(ipcsd);
 
     log_verbose("ipc_connect | End\n");
     return 0;
@@ -591,7 +594,7 @@ void *thread_ipc_handler(void *ptr) {
 
     do {
         bytes = recv(sd, &request, sizeof request, 0);
-        perrif_break(bytes, "process ipc request: recv()");
+        perrif_break(bytes, "ipc_handler | recv()");
 
         log_info("ipc_handler | Received IPC request from sd %d: "
                 "fd = %d, operation = %s, payload length = %zu.\n",

@@ -46,6 +46,10 @@ struct IPCResponse {
     size_t length;
 };
 
+// MPI message tags
+#define MPI_TAG_REQUEST 1
+#define MPI_TAG_RESPONSE 2
+
 // Message sent across the MPI network.
 
 struct MPIRequest {
