@@ -251,7 +251,6 @@ int send_probe_message(const char *server, int *mpi_rank) {
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
     int rv;
-    ssize_t numbytes;
     char s[INET6_ADDRSTRLEN];
 
     log_verbose("probe client | server = %s.\n", server);
@@ -292,15 +291,11 @@ int send_probe_message(const char *server, int *mpi_rank) {
     log_info("probe client | connecting to %s\n", s);
     freeaddrinfo(servinfo); // all done with this structure
 
-    if ((numbytes = send(sockfd, &mpi_network_id, sizeof(int), 0)) < 0) {
-        log_perror("probe client | send()");
-        return -1;
-    }
+    rv = send(sockfd, mpi_network_id, 0);
+    perrif_return(rv, "probe client | send()");
 
-    if ((numbytes = recv(sockfd, mpi_rank, sizeof(int), 0)) < 0) {
-        log_perror("probe client | recv()");
-        return -1;
-    }
+    rv = recv(sockfd, mpi_rank, 0);
+    perrif_return(rv, "probe client | recv()");
 
     close(sockfd);
 
@@ -324,7 +319,6 @@ void *thread_probe_server(void *ptr) {
     struct sockaddr_storage their_addr;
     socklen_t sin_size;
     char s[INET6_ADDRSTRLEN];
-    ssize_t numbytes;
 
     log_verbose("probe server | thread started.\n");
 
@@ -347,7 +341,7 @@ log_debug("listenfd = %d.\n", listenfd);
 
         int src_netid;
         int response = rank;
-        if ((numbytes = recv(fd, &src_netid, sizeof src_netid, 0)) < 0) {
+        if (recv(fd, src_netid, 0) < 0) {
             log_perror("probe server | recv");
             log_error("probe server | Failed to read request from %s.\n", s);
             goto failed;
@@ -358,7 +352,7 @@ log_debug("listenfd = %d.\n", listenfd);
             response = -1;
 
         log_info("probe server | sending response %d\n", response);
-        if (send(fd, &response, sizeof response, 0) == -1) {
+        if (send(fd, response, 0) < 0) {
             log_perror("probe server | send");
             log_error("probe server | Failed to respond to %s.\n", s);
             goto failed;
@@ -468,7 +462,6 @@ int init_probe_server(int size, int rank) {
 int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     int dst_rank;
     int rv;
-    ssize_t numbytes;
 
     log_verbose("ipc_connect | Start\n");
     auto it = hostname_to_mpi_rank.find(hostname);
@@ -537,8 +530,8 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     ipc_response.length = 0;
 
     log_info("ipc_connect | Sending IPC response ...\n");
-    numbytes = send(ipcsd, &ipc_response, sizeof ipc_response, 0);
-    perrif_return(numbytes, "ipc_connect | send()\n");
+    rv = send(ipcsd, ipc_response, 0);
+    perrif_return(rv, "ipc_connect | send()\n");
 
     log_verbose("ipc_connect | End\n");
     return 0;
@@ -585,7 +578,7 @@ void *thread_ipc_handler(void *ptr) {
     int sd = arg->sd;
 
     int rv;
-    ssize_t bytes;
+    bool eof;
     struct IPCRequest request;
     char *buf = NULL;
     bool keep_listening = true;
@@ -593,8 +586,12 @@ void *thread_ipc_handler(void *ptr) {
     log_verbose("ipc_handler | Start\n");
 
     do {
-        bytes = recv(sd, &request, sizeof request, 0);
-        perrif_break(bytes, "ipc_handler | recv()");
+        rv = recv(sd, request, 0, eof);
+        perrif_break(rv, "ipc_handler | recv()");
+        if (eof) {
+            keep_listening = false;
+            break;
+        }
 
         log_info("ipc_handler | Received IPC request from sd %d: "
                 "fd = %d, operation = %s, payload length = %zu.\n",
@@ -602,9 +599,8 @@ void *thread_ipc_handler(void *ptr) {
 
         if (request.length > 0) {
             buf = new char[request.length];
-            // TODO: partial result?
-            bytes = recv(sd, buf, sizeof buf, 0);
-            perrif_break(bytes, "ipc_handler | process ipc payload: recv()");
+            rv = recv_all(sd, buf, sizeof buf, 0);
+            perrif_break(rv, "ipc_handler | process ipc payload: recv()");
         }
 
         switch (request.operation) {

@@ -102,6 +102,89 @@ uint16_t allocate_ephemeral_port() {
     return -1;
 }
 
+static bool EOF_IGNORE;
+
+/**
+ * Send the entire buffer.
+ * @return 0 if successful, -1 otherwise.
+ */
+int send_all(int sockfd, const void *buf, size_t len, int flags) {
+    ssize_t bytes_sent;
+    size_t total_sent = 0;
+
+    while (total_sent < len) {
+        char *curr = (char *)buf + total_sent;
+#if USE_REAL_SOCKET
+    #define SEND real_send
+#else
+    #define SEND send
+#endif
+        bytes_sent = SEND(sockfd, curr, len - total_sent, flags);
+#undef SEND
+        if (bytes_sent < 0) {
+            log_perror("send all: send()");
+            return -1;
+        }
+
+        total_sent += (size_t)bytes_sent;
+    }
+
+    return 0;
+}
+
+/**
+ * Receive the entire buffer.
+ * @return 0 if successful, -1 otherwise.
+ */
+int recv_all(int sockfd, void *buf, size_t len, int flags,
+                bool &eof = EOF_IGNORE) {
+    ssize_t bytes_recv;
+    size_t total_recv = 0;
+
+    eof = false;
+    while (total_recv < len) {
+        char *curr = (char *)buf + total_recv;
+#if USE_REAL_SOCKET
+    #define RECV real_recv
+#else
+    #define RECV recv
+#endif
+        bytes_recv = RECV(sockfd, curr, len - total_recv, flags);
+#undef RECV
+        if (bytes_recv < 0) {
+            log_perror("recv all: recv()");
+            return -1;
+        } else if (bytes_recv == 0) {
+            eof = true;
+            return -1;
+        }
+
+        total_recv += (size_t)bytes_recv;
+    }
+
+    return 0;
+}
+
+/**
+ * Send the entire struct.
+ */
+template<class T>
+int send(int sockfd, const T &t, int flags) {
+    const void *buf = (const void *)&t;
+    size_t len = sizeof(T);
+    return send_all(sockfd, buf, len, flags);
+}
+
+/**
+ * Receive the entire struct.
+ */
+template<class T>
+int recv(int sockfd, T &t, int flags, bool &eof = EOF_IGNORE) {
+    void *buf = (void *)&t;
+    size_t len = sizeof(T);
+    return recv_all(sockfd, buf, len, flags, eof);
+}
+
 
 /* @section: String helpers */
 

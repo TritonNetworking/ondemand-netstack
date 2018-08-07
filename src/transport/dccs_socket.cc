@@ -16,6 +16,19 @@
 #include <map>
 #include <string>
 
+/* @section: function pointers to original glibc socket functions. */
+
+#define USE_REAL_SOCKET 1
+
+static bool real_socket_function_init = false;
+static int (*real_getaddrinfo)(const char *, const char *,
+    const struct addrinfo *, struct addrinfo **) = NULL;
+static void (*real_freeaddrinfo)(struct addrinfo *) = NULL;
+static int (*real_socket)(int, int, int) = NULL;
+static int (*real_connect)(int, const struct sockaddr *, socklen_t) = NULL;
+static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
+static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
+
 #include "dccs_config.h"
 #include "lib/logging.h"
 #include "dccs_message.h"
@@ -30,15 +43,6 @@ int ipc_socket = -1;
 
 
 /* @section: function pointers to original glibc socket functions. */
-
-static bool real_socket_function_init = false;
-static int (*real_getaddrinfo)(const char *, const char *,
-    const struct addrinfo *, struct addrinfo **) = NULL;
-static void (*real_freeaddrinfo)(struct addrinfo *) = NULL;
-static int (*real_socket)(int, int, int) = NULL;
-static int (*real_connect)(int, const struct sockaddr *, socklen_t) = NULL;
-static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
-static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
 
 void load_real_socket_functions() {
     if (real_socket_function_init)
@@ -64,8 +68,6 @@ void load_real_socket_functions() {
 int ipc_send_raw(const char *buf, size_t length) {
     int sd = ipc_socket;
     int rv;
-    ssize_t bytes_sent;
-    size_t total_sent = 0;
     struct sockaddr_un serveraddr;
 
     log_verbose("ipc_send_raw | buf = %p, length = %zu.\n", buf, length);
@@ -95,15 +97,8 @@ int ipc_send_raw(const char *buf, size_t length) {
         ipc_socket = sd;
 
 socket_connected:
-        while (total_sent < length) {
-            bytes_sent = real_send(sd, buf, length, 0);
-            if (bytes_sent < 0) {
-                log_perror("IPC send raw: send()");
-                break;
-            }
-
-            total_sent += (size_t)bytes_sent;
-        }
+        rv = send_all(sd, buf, length, 0);
+        perrif_break(rv, "IPC send raw: send()");
 
         log_verbose("ipc_send_raw | return 0\n");
         return 0;
@@ -120,8 +115,6 @@ socket_connected:
 int ipc_recv_raw(char *buf, size_t length) {
     int sd = ipc_socket;
     int rv;
-    ssize_t bytes_recv;
-    size_t total_recv = 0;
     struct sockaddr_un serveraddr;
 
     log_verbose("ipc_recv_raw | buf = %p, length = %zu.\n", buf, length);
@@ -151,15 +144,8 @@ int ipc_recv_raw(char *buf, size_t length) {
         ipc_socket = sd;
 
 socket_connected:
-        while (total_recv < length) {
-            bytes_recv = real_recv(sd, buf, length, 0);
-            if (bytes_recv < 0) {
-                log_perror("IPC recv raw: recv()");
-                break;
-            }
-
-            total_recv += (size_t)bytes_recv;
-        }
+        rv = recv_all(sd, buf, length, 0);
+        perrif_break(rv, "IPC recv raw: recv()");
 
         log_verbose("ipc_recv_raw | return 0\n");
         return 0;
