@@ -62,6 +62,34 @@ bool t_md_init = false;
 
 // List of all IPC handler threads.
 vector<pthread_t> ipc_threads;
+static pthread_mutex_t ipc_threads_mutex;
+static bool ipc_threads_mutex_init = false;
+
+void add_ipc_thread(pthread_t t) {
+    if (!ipc_threads_mutex_init) {
+        pthread_mutex_init(&ipc_threads_mutex, NULL);
+        ipc_threads_mutex_init = true;
+    }
+
+    pthread_mutex_lock(&ipc_threads_mutex);
+    ipc_threads.push_back(t);
+    pthread_mutex_unlock(&ipc_threads_mutex);
+}
+
+int remove_ipc_thread(pthread_t t) {
+    int count = 0;
+
+    pthread_mutex_lock(&ipc_threads_mutex);
+    for (auto it = ipc_threads.begin(); it != ipc_threads.end(); it++) {
+        if (pthread_equal(*it, t) != 0) {
+            ipc_threads.erase(it);
+            ++count;
+        }
+    }
+
+    pthread_mutex_unlock(&ipc_threads_mutex);
+    return count;
+}
 
 
 /* @section: Global data structure keeping conection information */
@@ -647,6 +675,7 @@ void *thread_ipc_handler(void *ptr) {
     free(ptr);
 
     log_verbose("ipc_handler | End\n");
+    remove_ipc_thread(pthread_self());
     return 0;
 }
 
@@ -702,6 +731,7 @@ int ipc_listen_loop(int size, int rank) {
             arg->sd = sd;
             rv = pthread_create(&t, NULL, thread_ipc_handler, arg);
             errif(rv, "ipc_loop | Failed to create IPC handler thread.\n");
+            add_ipc_thread(t);
         }
 
         // TODO: clean up
