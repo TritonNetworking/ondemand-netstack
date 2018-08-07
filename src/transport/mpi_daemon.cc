@@ -778,31 +778,44 @@ int run(int size, int rank) {
     return rv;
 }
 
-int main(int argc, char *argv[]) {
-    int size, rank, rv;
-
+void pre_mpi_init() {
     srand(static_cast<unsigned int>(time(NULL)));
-
-    MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    mpi_rank = rank;
-    mpi_size = size;
-    log_verbose("MPI initialize: size = %d, rank = %d.\n", size, rank);
-
-    init_mpi_struct_types();
 
     // TODO: this is not working yet.
     // MPI translates SIGINT to SIGTERM for child processes
     if (SIG_ERR == signal(SIGTERM, sigint_handler)) {
         log_warning("Failed to register SIGINT handler.\n");
     }
+}
+
+void post_mpi_init() {
+    init_mpi_struct_types();
+}
+
+void mpi_init(int argc, char *argv[], int &size, int &rank) {
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    mpi_rank = rank;
+    mpi_size = size;
+    log_verbose("MPI initialize: size = %d, rank = %d.\n", size, rank);
+}
+
+void mpi_finalize() {
+    MPI_Finalize();
+    log_verbose("MPI finalized.\n");
+}
+
+int main(int argc, char *argv[]) {
+    int size, rank, rv;
+
+    pre_mpi_init();
+    mpi_init(argc, argv, size, rank);
+    post_mpi_init();
 
     rv = run(size, rank);
 
-    MPI_Finalize();
-
-    log_debug("MPI finalized.\n");
+    mpi_finalize();
 
     return rv;
 }
