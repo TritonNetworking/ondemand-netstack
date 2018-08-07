@@ -294,7 +294,7 @@ int send_probe_message(const char *server, int *mpi_rank) {
     rv = send(sockfd, mpi_network_id, 0);
     perrif_return(rv, "probe client | send()");
 
-    rv = recv(sockfd, mpi_rank, 0);
+    rv = recv(sockfd, *mpi_rank, 0);
     perrif_return(rv, "probe client | recv()");
 
     close(sockfd);
@@ -469,7 +469,7 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
         dst_rank = it->second;
     } else {
         if ((rv = send_probe_message(hostname, &dst_rank)) != 0) {
-            log_error("ipc_connect(%d, %s, " PRIu16 "): "
+            log_error("ipc_connect(%d, %s, %" PRIu16 "): "
                         "failed to get probe response.\n",
                         fd, hostname, dst_port);
             return -1;
@@ -587,11 +587,12 @@ void *thread_ipc_handler(void *ptr) {
 
     do {
         rv = recv(sd, request, 0, eof);
-        perrif_break(rv, "ipc_handler | recv()");
         if (eof) {
             keep_listening = false;
             break;
         }
+
+        perrif_break(rv, "ipc_handler | recv()");
 
         log_info("ipc_handler | Received IPC request from sd %d: "
                 "fd = %d, operation = %s, payload length = %zu.\n",
