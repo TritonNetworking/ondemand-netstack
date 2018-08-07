@@ -22,7 +22,7 @@ enum class MPIOperation : uint8_t {
 
 enum class MPIStatus : uint8_t {
     SUCCESS,
-    INVAL,
+    PERM,
     CONNREFUSED,
 };
 

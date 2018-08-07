@@ -190,7 +190,7 @@ void *thread_mpi_daemon(void *ptr) {
                 break;
 
             default:
-                response.status = MPIStatus::INVAL;
+                response.status = MPIStatus::PERM;
                 log_warning("mpi_daemon | Unhandled operation %s.\n",
                                 to_c_str(request.operation));
                 break;
@@ -515,6 +515,11 @@ int ipc_connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
         case MPIStatus::CONNREFUSED: {
             ipc_response.retval_int = -1;
             ipc_response.error = ECONNREFUSED;
+            break;
+        }
+        case MPIStatus::PERM: {
+            ipc_response.retval_int = -1;
+            ipc_response.error = EPERM;
             break;
         }
         default: {

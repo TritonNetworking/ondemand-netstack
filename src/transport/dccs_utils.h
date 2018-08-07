@@ -228,7 +228,7 @@ string to_string(MPIStatus status) {
     if (m.size() == 0) {
 #define INSERT_ELEMENT(p) m[p] = std::string(#p)
         INSERT_ELEMENT(MPIStatus::SUCCESS);
-        INSERT_ELEMENT(MPIStatus::INVAL);
+        INSERT_ELEMENT(MPIStatus::PERM);
         INSERT_ELEMENT(MPIStatus::CONNREFUSED);
 #undef INSERT_ELEMENT
     }

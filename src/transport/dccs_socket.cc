@@ -284,6 +284,8 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     errif_return(rv, "connect | Failed to recv IPC response for connect().\n");
 
     // Process response payload (optional).
+    if (response.retval_int != 0)
+        errno = response.error;
 
     log_verbose("custom socket | connect(%d, %p, %zu) returned %d\n",
                     sockfd, addr, addrlen, response.retval_int);
