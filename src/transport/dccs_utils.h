@@ -97,11 +97,6 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-uint16_t allocate_ephemeral_port() {
-    // TODO: implement this.
-    return -1;
-}
-
 static bool EOF_IGNORE;
 
 /**

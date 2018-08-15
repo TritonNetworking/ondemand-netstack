@@ -79,6 +79,26 @@ struct MPIConnection {
     int dst_rank;
     uint16_t src_port;
     uint16_t dst_port;
+
+    bool operator<(const MPIConnection &other) const {
+        if (src_rank < other.src_rank)
+            return true;
+        if (src_rank > other.src_rank)
+            return false;
+        if (dst_rank < other.dst_rank)
+            return true;
+        if (dst_rank > other.dst_rank)
+            return false;
+        if (src_port < other.src_port)
+            return true;
+        if (src_port > other.src_port)
+            return false;
+        if (dst_port < other.dst_port)
+            return true;
+        if (dst_port > other.dst_port)
+            return false;
+        return false;
+    }
 };
 
 #endif // DCCS_MESSAGE_H
