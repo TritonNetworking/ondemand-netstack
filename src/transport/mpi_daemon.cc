@@ -130,6 +130,8 @@ int run(int size, int rank) {
     }
 #endif
 
+    log_verbose("run | Start\n");
+
     MPIServer mpid(size, rank);
     IPCServer ipcd(&mpid);
 
@@ -142,6 +144,10 @@ int run(int size, int rank) {
     rv = ipcd.Start();   // Should block
     errif_return(rv, "Failed to run IPC server.\n");
 
+    mpid.Stop();
+    ipcd.Stop();
+
+    log_verbose("run | End\n");
     return rv;
 }
 

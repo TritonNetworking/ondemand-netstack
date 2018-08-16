@@ -16,6 +16,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <utility>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -42,13 +43,13 @@ private:
     volatile bool signaled;
 
     // List of all IPC handler threads.
-    vector<thread::id> ipc_threads;
+    vector<thread> ipc_threads;
     mutex ipc_threads_mutex;
 
     MPIServer * const mpid;
     ConnectionManager * const connmgr;
 
-    void AddThread(thread::id tid);
+    void AddThread(thread &t);
     void RemoveThread(thread::id tid);
 
     int SendResponse(int ipcsd, IPCResponse response);
@@ -68,16 +69,17 @@ public:
 };
 
 
-void IPCServer::AddThread(thread::id tid) {
+void IPCServer::AddThread(thread &t) {
     ipc_threads_mutex.lock();
-    ipc_threads.push_back(tid);
+    ipc_threads.push_back(move(t));
     ipc_threads_mutex.unlock();
 }
 
 void IPCServer::RemoveThread(thread::id tid) {
     ipc_threads_mutex.lock();
     ipc_threads.erase(
-        std::remove(ipc_threads.begin(), ipc_threads.end(), tid),
+        std::remove_if(ipc_threads.begin(), ipc_threads.end(),
+            [&] (auto &t) { return t.get_id() == tid; }),
         ipc_threads.end());
     ipc_threads_mutex.unlock();
 }
@@ -124,7 +126,7 @@ void IPCServer::ThreadIPCHandler(int sd) {
                 uint16_t port = *((uint16_t *)(buf + strlen(buf) + 1));
                 rv = Connect(sd, request.fd, hostname, port);
                 errif_break(rv, "ipc_handler | Failed to handle %d:"
-                            "connect(%d, %s, %s)\n",
+                            "connect(%d, %s, %" PRIu16 ")\n",
                             sd, request.fd, hostname, port);
                 break;
             }
@@ -207,7 +209,8 @@ int IPCServer::Listen() {
 
             thread t(&IPCServer::ThreadIPCHandler, this, sd);
             errif(rv, "ipc_loop | Failed to create IPC handler thread.\n");
-            AddThread(t.get_id());
+            t.detach();
+            AddThread(t);
         }
 
         // Optional clean up
@@ -231,12 +234,16 @@ int IPCServer::Listen() {
 int IPCServer::Connect(int ipcsd, int fd, const char *hostname, uint16_t dst_port) {
     int dst_rank;
     int rv;
+    struct IPCResponse ipc_response = {};
 
     log_verbose("ipc_connect | Start\n");
     dst_rank = mpid->GetRank(string(hostname));
     if (dst_rank == -1) {
         log_error("Host %s not found.\n", hostname);
-        return -1;
+        ipc_response.retval_int = -1;
+        ipc_response.error = ECONNREFUSED;
+        rv = SendResponse(ipcsd, ipc_response);
+        return rv;
     }
 
     uint16_t src_port = connmgr->AllocateEphemeralPort();
@@ -267,7 +274,6 @@ int IPCServer::Connect(int ipcsd, int fd, const char *hostname, uint16_t dst_por
     log_verbose("ipc_connect | Received MPI response %s.\n",
                     to_c_str(response.status));
 
-    struct IPCResponse ipc_response = {};
     switch (response.status) {
         case MPIStatus::SUCCESS: {
             ipc_response.retval_int = 0;

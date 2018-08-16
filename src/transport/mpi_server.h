@@ -24,6 +24,8 @@ private:
     // The network ID that uniquely identify this MPI network
     int mpi_network_id;
 
+    thread ts;
+
     map<string, int> hostname_to_rank;
     mutex hostname_to_rank_mutex;
 
@@ -130,7 +132,7 @@ int MPIServer::InitializeHostnameRankMapping() {
 }
 
 int MPIServer::StartServerThread() {
-    thread t(&MPIServer::DaemonThread, this);
+    ts = thread(&MPIServer::DaemonThread, this);
     return 0;
 }
 
