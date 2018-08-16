@@ -17,8 +17,9 @@
 extern int mpi_rank;
 #endif
 
-#if USE_PTHREAD
-#include <pthread.h>
+#if USE_CXX_THREAD
+#include <mutex>
+#include <thread>
 #endif
 
 /* Logging functions */
@@ -40,16 +41,9 @@ void vlog_level(int level, const char *format, va_list arg) {
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-#if USE_PTHREAD
-    static pthread_mutex_t mutex;
-    static bool mutex_init = false;
-
-    if (!mutex_init) {
-        pthread_mutex_init(&mutex, NULL);
-        mutex_init = true;
-    }
-
-    pthread_mutex_lock(&mutex);
+#if USE_CXX_THREAD
+    static std::mutex m;
+    std::lock_guard lock(m);
 #endif
 
 #ifdef LOGGING_LEVEL
@@ -100,10 +94,6 @@ void vlog_level(int level, const char *format, va_list arg) {
 #undef PRINTMSG
 #undef PRINTTAG
     }
-
-#if USE_PTHREAD
-    pthread_mutex_unlock(&mutex);
-#endif
 }
 
 void llog(int level, const char *format, ...) {

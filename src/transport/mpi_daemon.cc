@@ -31,7 +31,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
-#define USE_PTHREAD 1
+#define USE_CXX_THREAD 1
 
 #include "dccs_config.h"
 #include "lib/logging.h"
