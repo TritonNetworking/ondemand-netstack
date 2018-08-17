@@ -241,6 +241,7 @@ const char *to_c_str(MPIStatus status) {
 
 /* @section: generic helpers */
 
+// Get the current machine's hostname.
 string gethostname() {
     const int len = HOST_NAME_MAX;
     char *buf = new char[len];
@@ -252,6 +253,28 @@ string gethostname() {
     string s(buf);
     delete[] buf;
     return s;
+}
+
+// Get the target-th segment of the string
+string get_segment(string s, string delimiter, size_t target = 1) {
+    size_t current_segment = 1;
+    size_t start = 0;   // Start of current segment
+    while (current_segment < target) {
+        size_t pos = s.find(delimiter, start);
+        if (pos == string::npos)
+            break;
+
+        current_segment++;
+        start = pos + delimiter.length();
+    }
+
+    if (current_segment < target)
+        return string();
+
+    size_t delim_pos = s.find(delimiter, start);
+    if (delim_pos == string::npos)
+        delim_pos = s.length();
+    return s.substr(start, delim_pos - start);
 }
 
 

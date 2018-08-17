@@ -156,6 +156,10 @@ int MPIServer::InitializeHostnameRankMapping() {
             success = false;
             break;
         }
+
+        string shortname = get_segment(s, ".");
+        if (hostname_to_rank.find(shortname) == hostname_to_rank.end())
+            hostname_to_rank.insert(make_pair(shortname, r));
     }
 
     delete[] buf;
