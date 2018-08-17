@@ -21,3 +21,5 @@ add_subdirectory(microbenchmark)
 add_subdirectory(examples)
 add_subdirectory(transport)
 
+add_subdirectory(test)
+
