@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 source ./config
 
-if [[ $# -le 1 ]]; then
+if [[ $# -eq 0 ]]; then
     >&2 echo "Usage: $0 <execpath>"
     exit 2
 fi

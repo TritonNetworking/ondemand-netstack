@@ -6,6 +6,9 @@
 #define DCCS_UTIL_H
 
 #include <byteswap.h>
+#include <limits.h>
+#include <unistd.h>
+
 #include <map>
 #include <string>
 
@@ -233,6 +236,22 @@ string to_string(MPIStatus status) {
 
 const char *to_c_str(MPIStatus status) {
     return to_string(status).c_str();
+}
+
+
+/* @section: generic helpers */
+
+string gethostname() {
+    const int len = HOST_NAME_MAX;
+    char *buf = new char[len];
+    if (gethostname(buf, len) != 0) {
+        log_perror("gethostname");
+        buf[0] = '\0';
+    }
+
+    string s(buf);
+    delete[] buf;
+    return s;
 }
 
 

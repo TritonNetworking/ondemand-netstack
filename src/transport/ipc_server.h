@@ -116,7 +116,7 @@ void IPCServer::ThreadIPCHandler(int sd) {
 
         if (request.length > 0) {
             buf = new char[request.length];
-            rv = recv_all(sd, buf, sizeof buf, 0);
+            rv = recv_all(sd, buf, request.length, 0);
             perrif_break(rv, "ipc_handler | process ipc payload: recv()");
         }
 

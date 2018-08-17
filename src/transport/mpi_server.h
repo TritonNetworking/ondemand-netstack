@@ -1,6 +1,7 @@
 #ifndef MPI_SERVER_H
 #define MPI_SERVER_H
 
+#include <limits.h>
 #include <mpi.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -127,8 +128,45 @@ int MPIServer::InitializeNetwork() {
 }
 
 int MPIServer::InitializeHostnameRankMapping() {
-    // TODO: implement this
-    return -1;
+    int rv;
+    bool success = true;
+
+    log_verbose("Initializing hostname->rank mapping ...\n");
+
+    string hostname = gethostname();
+    const int len = HOST_NAME_MAX;
+    char *buf = new char[size * len];
+    memset(buf, 0, size * len);
+    memcpy(buf + rank * len, hostname.c_str(), hostname.length());
+
+    log_verbose("MPI all gather ...\n");
+    rv = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
+    //rv = MPI_Allgather(buf + rank * len, len, MPI_CHAR,
+                        buf, len, MPI_CHAR, MPI_COMM_WORLD);
+    perrif_return(rv, "init hostname mapping | MPI_Allgather");
+
+    log_verbose("Reading hostnames...\n");
+    lock_guard lock(hostname_to_rank_mutex);
+    for (int r = 0; r < size; r++) {
+        string s(buf + r * len);
+        log_verbose("hostname = %s, rank = %d.\n", s.c_str(), r);
+        auto p = hostname_to_rank.insert(make_pair(s, r));
+        if (!p.second) {
+            log_error("Duplicate hostname %s.\n", s);
+            success = false;
+            break;
+        }
+    }
+
+    delete[] buf;
+
+    if (success) {
+        log_verbose("Initialized hostname->rank mapping.\n");
+        return 0;
+    } else {
+        log_verbose("Failed to initialize hostname->rank mapping.\n");
+        return -1;
+    }
 }
 
 int MPIServer::StartServerThread() {
@@ -200,8 +238,8 @@ int MPIServer::Start() {
 
     if ((rv = InitializeNetwork()) < 0)
         return rv;
-//    if ((rv = InitializeHostnameRankMapping()) < 0)
-//        return rv;
+    if ((rv = InitializeHostnameRankMapping()) < 0)
+        return rv;
     if ((rv = StartServerThread()) < 0)
         return rv;
 

@@ -202,7 +202,7 @@ int getaddrinfo(const char *node, const char *service,
     int rv;
     struct addrinfo *p;
     rv = real_getaddrinfo(node, service, hints, res);
-    string hostname = string(node);
+    string hostname = node != NULL ? string(node) : string();
     string port = string(service);
     for (p = *res; p != NULL; p = p->ai_next) {
         sockaddr_to_hostport[make_tuple(p->ai_addr, p->ai_addrlen)] =
