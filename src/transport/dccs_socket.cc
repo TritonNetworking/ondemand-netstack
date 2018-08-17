@@ -18,6 +18,7 @@
 
 /* @section: function pointers to original glibc socket functions. */
 
+// Use real_ version of socket functions in helpers
 #define USE_REAL_SOCKET 1
 
 static bool real_socket_function_init = false;
@@ -26,8 +27,13 @@ static int (*real_getaddrinfo)(const char *, const char *,
 static void (*real_freeaddrinfo)(struct addrinfo *) = NULL;
 static int (*real_socket)(int, int, int) = NULL;
 static int (*real_connect)(int, const struct sockaddr *, socklen_t) = NULL;
+static int (*real_bind)(int, const struct sockaddr *, socklen_t) = NULL;
+static int (*real_accept)(int, struct sockaddr *, socklen_t *) = NULL;
 static ssize_t (*real_send)(int, const void *, size_t, int) = NULL;
 static ssize_t (*real_recv)(int, void *, size_t, int) = NULL;
+static int (*real_getsockopt)(int, int, int, void *, socklen_t *) = NULL;
+static int (*real_setsockopt)(int, int, int, const void *, socklen_t) = NULL;
+
 
 #include "dccs_config.h"
 #include "lib/logging.h"
@@ -52,8 +58,12 @@ void load_real_socket_functions() {
     *(void **)(&real_freeaddrinfo) = dlsym(RTLD_NEXT, "freeaddrinfo");
     *(void **)(&real_socket) = dlsym(RTLD_NEXT, "socket");
     *(void **)(&real_connect) = dlsym(RTLD_NEXT, "connect");
+    *(void **)(&real_bind) = dlsym(RTLD_NEXT, "bind");
+    *(void **)(&real_accept) = dlsym(RTLD_NEXT, "accept");
     *(void **)(&real_send) = dlsym(RTLD_NEXT, "send");
     *(void **)(&real_recv) = dlsym(RTLD_NEXT, "recv");
+    *(void **)(&real_getsockopt) = dlsym(RTLD_NEXT, "getsockopt");
+    *(void **)(&real_setsockopt) = dlsym(RTLD_NEXT, "setsockopt");
 
     real_socket_function_init = true;
 }
@@ -235,6 +245,7 @@ int socket(int domain, int type, int protocol) {
                     domain, type, protocol);
 
     int rv;
+    // TODO: change this?
     rv = real_socket(domain, type, protocol);
     log_verbose("custom socket | socket(%d, %d, %p) returned %d\n",
                     domain, type, protocol, rv);
@@ -292,6 +303,34 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     return response.retval_int;
 }
 
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    load_real_socket_functions();
+
+    log_verbose("custom socket | bind(%d, %p, %zu)\n",
+                    sockfd, addr, addrlen);
+
+    int rv;
+    // TODO: change this
+    rv = real_bind(sockfd, addr, addrlen);
+    log_verbose("custom socket | bind(%d, %p, %zu, %d)\n",
+                    sockfd, addr, addrlen, rv);
+    return rv;
+}
+
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+    load_real_socket_functions();
+
+    log_verbose("custom socket | accept(%d, %p, %zu)\n",
+                    sockfd, addr, addrlen);
+
+    int rv;
+    // TODO: change this
+    rv = real_accept(sockfd, addr, addrlen);
+    log_verbose("custom socket | accept(%d, %p, %zu, %d)\n",
+                    sockfd, addr, addrlen, rv);
+    return rv;
+}
+
 ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
     load_real_socket_functions();
 
@@ -313,8 +352,36 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 
     ssize_t numbytes = real_recv(sockfd, buf, len, flags);
 
-    log_verbose("custom socket | recv(%d, %p, %zu, %d) returned %d\n",
+    log_verbose("custom socket | recv(%d, %p, %zu, %zu) returned %d\n",
                     sockfd, buf, len, flags, numbytes);
     return numbytes;
+}
+
+int getsockopt(int sockfd, int level, int optname, void *optval,
+                socklen_t *optlen) {
+    load_real_socket_functions();
+
+    log_verbose("custom socket | getsockopt(%d, %d, %d, %p, %p)\n",
+                    sockfd, level, optname, optval, optlen);
+
+    int rv = real_getsockopt(sockfd, level, optname, optval, optlen);
+
+    log_verbose("custom socket | getsockopt(%d, %d, %d, %p, %p, %d)\n",
+                    sockfd, level, optname, optval, optlen, rv);
+    return rv;
+}
+
+int setsockopt(int sockfd, int level, int optname, const void *optval,
+                socklen_t optlen) {
+    load_real_socket_functions();
+
+    log_verbose("custom socket | setsockopt(%d, %d, %d, %p, %zu)\n",
+                    sockfd, level, optname, optval, optlen);
+
+    int rv = real_setsockopt(sockfd, level, optname, optval, optlen);
+
+    log_verbose("custom socket | setsockopt(%d, %d, %d, %p, %zu, %d)\n",
+                    sockfd, level, optname, optval, optlen, rv);
+    return rv;
 }
 
