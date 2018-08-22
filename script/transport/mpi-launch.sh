@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 # Check if MPI environment is loaded
 if ! [ -x "$(command -v mpirun)" ]; then
-    source ../setup-mpi.sh
+    source ../setup/setup-mpi.sh
 fi
 
 source ./config

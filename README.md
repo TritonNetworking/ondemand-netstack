@@ -29,13 +29,13 @@ To get started, go to [`script`](script) directory and run [`build.sh`](script/b
     * `-d`: sets `cmake` build type to DEBUG. **Must be used with `-f`.**
     * `-c`: runs `make clean` before `make`.
   * MPI is required to build MPI code:
-    * [`setup-mpi.sh`](script/setup-mpi.sh) loads the MPI library.
+    * [`setup-mpi.sh`](script/setup/setup-mpi.sh) loads the MPI library.
     * OpenMPI is used by default, and is included with OFED v4.4 (installed at `/usr/mpi/gcc/openmpi-3.1.1rc1`).
     * HPC-X can also be used by changing the flag in the script, but the default OpenMPI is recommended.
   * Configuration files:
     * [`config`](script/config) files under `script` and sub-directories set up environment variables.
     * [`hosts.config`](script/hosts.config) is a plaintext list of hostnames, used for launching parallel ssh and MPI commands.
   * Miscellaneous files:
-    * [`install-tools.sh`](script/install-tools.sh) includes the packages needed.
-    * [`setup-host.sh`](script/setup-host.sh) includes end host setup script for HPC environment.
+    * [`install-tools.sh`](script/setup/install-tools.sh) includes the packages needed.
+    * [`setup-host.sh`](script/setup/setup-host.sh) includes end host setup script for HPC environment.
 
