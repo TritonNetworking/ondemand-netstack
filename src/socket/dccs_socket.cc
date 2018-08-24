@@ -35,10 +35,10 @@ static int (*real_getsockopt)(int, int, int, void *, socklen_t *) = NULL;
 static int (*real_setsockopt)(int, int, int, const void *, socklen_t) = NULL;
 
 
-#include "dccs_config.h"
 #include "lib/logging.h"
-#include "dccs_message.h"
-#include "dccs_utils.h"
+#include "lib/dccs_config.h"
+#include "lib/dccs_utils.h"
+#include "ipc/dccs_message.h"
 
 using namespace std;
 

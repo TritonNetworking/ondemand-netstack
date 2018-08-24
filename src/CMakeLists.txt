@@ -17,8 +17,8 @@ message(STATUS "CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_subdirectory(examples)
+add_subdirectory(socket)
 add_subdirectory(transport)
-
+add_subdirectory(examples)
 add_subdirectory(test)
 

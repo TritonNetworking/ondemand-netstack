@@ -24,13 +24,13 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
-#include "dccs_config.h"
+#include "lib/dccs_config.h"
 #include "lib/logging.h"
-#include "dccs_message.h"
-#include "dccs_utils.h"
+#include "lib/dccs_utils.h"
 
 #include "connection_manager.h"
-#include "mpi_server.h"
+#include "dccs_message.h"
+#include "transport/mpi/mpi_server.h"
 
 using namespace std;
 

@@ -15,7 +15,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-#include "dccs_message.h"
+#include "lib/logging.h"
+#include "ipc/dccs_message.h"
 
 using namespace std;
 

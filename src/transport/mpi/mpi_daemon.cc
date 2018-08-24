@@ -33,13 +33,14 @@
 
 #define USE_CXX_THREAD 1
 
-#include "dccs_config.h"
 #include "lib/logging.h"
-#include "dccs_message.h"
-#include "dccs_utils.h"
+#include "lib/dccs_config.h"
+#include "lib/dccs_utils.h"
 
-#include "connection_manager.h"
-#include "ipc_server.h"
+#include "ipc/ipc_server.h"
+#include "ipc/dccs_message.h"
+
+#include "ipc/connection_manager.h"
 #include "mpi_server.h"
 
 using namespace std;

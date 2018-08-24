@@ -11,7 +11,7 @@
 #include <thread>
 
 #include "lib/logging.h"
-#include "dccs_utils.h"
+#include "lib/dccs_utils.h"
 
 extern MPI_Datatype MPI_struct_request, MPI_struct_response;
 
