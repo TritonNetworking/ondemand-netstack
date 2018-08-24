@@ -2,7 +2,7 @@
 
 # Check if MPI environment is loaded
 if ! [ -x "$(command -v mpirun)" ]; then
-    source ../setup-hpcx.sh
+    source ../setup-mpi.sh
 fi
 
 source ./config
