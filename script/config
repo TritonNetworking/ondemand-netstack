@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
 
+# Get path of this script
+if [ -z $BASH_SOURCE ]; then
+    CURR_PATH=$0
+else
+    CURR_PATH=$BASH_SOURCE
+fi
+
+# Repo directory setup
+CURR_DIR=$(dirname "$(realpath "$CURR_PATH")")
+REPO_DIR=$(realpath "$CURR_DIR/..")
+BUILD_DIR="$REPO_DIR/build"
+SCRIPT_DIR="$REPO_DIR/script"
+HOSTS_PATH="$SCRIPT_DIR/hosts.config"
+
+#echo "CURR_DIR = $CURR_DIR, REPO_DIR = $REPO_DIR"
+
 # Program Configuration
 # This seems to have problems, so maybe just enable them per program instead of exporting them here.
 USE_HUGEPAGES=false
@@ -8,13 +24,4 @@ if $USE_HUGEPAGES; then
     export LD_PRELOAD=libhugetlbfs.so
     export HUGETLB_MORECORE=yes
 fi
-
-# Repo directory setup
-CURR_DIR=$(realpath "$(dirname "$BASH_SOURCE")")
-REPO_DIR=$(realpath $CURR_DIR/..)
-BUILD_DIR="$REPO_DIR/build"
-SCRIPT_DIR="$REPO_DIR/script"
-HOSTS_PATH="$SCRIPT_DIR/hosts.config"
-
-#echo "CURR_DIR = $CURR_DIR, REPO_DIR = $REPO_DIR"
 
