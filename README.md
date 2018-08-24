@@ -2,11 +2,10 @@
 
 ## Overview
 
-This repo holds benchmark tools for MPI/RDMA, using Mellanox ConnectX-5 NICs.
+This repo holds the custom network stack that can be LD\_PRELOAD into unmodified application. Implementations can be any of standard socket, MPI, DPDK, etc.
 The repo is organized as follows:
 
   * [`src`](src): includes all source code:
-    * [`microbenchmark`](src/microbenchmark): includes micro-benchmark code for RDMA and MPI
   * [`script`](script): includes script wrappers to run programs
   * [`build`](build): default CMake output directory (it's `git`-ignored)
   * [`docs`](docs): includes documentation
@@ -30,7 +29,7 @@ To get started, go to [`script`](script) directory and run [`build.sh`](script/b
     * `-d`: sets `cmake` build type to DEBUG. **Must be used with `-f`.**
     * `-c`: runs `make clean` before `make`.
   * MPI is required to build MPI code:
-    * [`setup-hpcx.sh`](script/setup-hpcx.sh) loads the MPI library.
+    * [`setup-mpi.sh`](script/setup-mpi.sh) loads the MPI library.
     * OpenMPI is used by default, and is included with OFED v4.4 (installed at `/usr/mpi/gcc/openmpi-3.1.1rc1`).
     * HPC-X can also be used by changing the flag in the script, but the default OpenMPI is recommended.
   * Configuration files:
@@ -40,13 +39,3 @@ To get started, go to [`script`](script) directory and run [`build.sh`](script/b
     * [`install-tools.sh`](script/install-tools.sh) includes the packages needed.
     * [`setup-host.sh`](script/setup-host.sh) includes end host setup script for HPC environment.
 
-### Micro-benchmark
-
-There are a few scripts to run the program, run the standard Mellanox `perftest` tool, run the program over parallel ssh, and to plot the result.
-
-  * [`ib_all_length.sh`](script/microbenchmark/ib_all_length.sh) runs `perftest` latency and bandwidth benchmark programs.
-  * [`run_all_length.sh`](script/microbenchmark/run_all_length.sh) runs RDMA latency/bandwidth benchmark programs.
-  * [`mpi-launch.sh`](script/microbenchmark/mpi-launch.sh) launches MPI latency/bandwidth benchmark programs.
-  * [`pssh_launch.sh`](script/microbenchmark/pssh_launch.sh) launches a command over parallel-ssh.
-  * [`pssh_node.sh`](script/microbenchmark/pssh_node.sh) is the default command to run on target machines when invoking [`pssh_launch.sh`](script/microbenchmark/pssh_launch.sh).
-  * [`process_result.py`](script/microbenchmark/process_result.py) plots both RDMA (Mellanox `perftest` tool) and MPI (my tool) logs, and supports latency and throughput.

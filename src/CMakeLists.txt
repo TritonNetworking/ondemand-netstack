@@ -17,7 +17,6 @@ message(STATUS "CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_subdirectory(microbenchmark)
 add_subdirectory(examples)
 add_subdirectory(transport)
 
