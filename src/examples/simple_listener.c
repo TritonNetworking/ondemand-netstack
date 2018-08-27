@@ -34,7 +34,7 @@ int main(void)
 	int sockfd;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
-	int numbytes;
+	ssize_t numbytes;
 	struct sockaddr_storage their_addr;
 	char buf[MAXBUFLEN];
 	socklen_t addr_len;
@@ -87,7 +87,7 @@ int main(void)
 		inet_ntop(their_addr.ss_family,
 			get_in_addr((struct sockaddr *)&their_addr),
 			s, sizeof s));
-	printf("listener: packet is %d bytes long\n", numbytes);
+	printf("listener: packet is %ld bytes long\n", numbytes);
 	buf[numbytes] = '\0';
 	printf("listener: packet contains \"%s\"\n", buf);
 
