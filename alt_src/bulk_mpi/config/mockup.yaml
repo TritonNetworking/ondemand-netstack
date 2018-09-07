@@ -1,0 +1,131 @@
+# Guard time represents the portion of each timeslot that is 'unsafe'.
+# Endhosts regularly delay or do not transmit at line rate,
+# which means they send over the edge of a timeslot. The variability in
+# endhost transmission is deemed unsafe, and is solved by a suitably large
+# guard time. This solves the precision of the endhost's transmission.
+guard_time_ns: 5000
+
+# Preallocation delay represents the constant delay between endhosts
+# beginning network transmission and it actually going out over the wire.
+# This solves the accuracy of the endhost's transmission.
+prealloc_delay_ns: 500
+
+# Link rate of the network, in Gbps.
+link_rate_gbps: 100
+
+# The number of rotors in the system. All endhosts are connected to
+# all rotors, and each endhost will have this many MPI tasks,
+# one for each Rotor.
+num_rotors: 2
+
+# The number of endhosts in the system.
+num_hosts: 4
+
+# Magic value sent with all control packets.
+magic: 0xdeed
+
+# Endhost identifiers (e.g. from timeslots) to rank mappings.
+# Each identifier should have an array, where the length of the
+# array is equal to 'num_rotors' and the 'i'-th element at each index
+# is the rank of the MPI process assigned to the 'i'-th rotor.
+# There should also be a 'control' and 'dummy' ID used for controlling
+# the network.
+id_to_rank:
+  0: [0,1]
+  1: [4,5]
+  2: [8,9]
+  3: [12,13]
+  control: [16]  # The control source.
+  dummy: [17]    # The control sink.
+
+# Should be duplicate to id_to_rank in terms of information.
+# Just used to allow for reverse lookups of that information.
+rank_to_id:
+  0: 0
+  1: 0
+  4: 1
+  5: 1
+  8: 2
+  9: 2
+  12: 3
+  13: 3
+  16: control
+  17: dummy
+
+# Same as with rank_to_id, but reverse lookup for rotor ID.
+rank_to_rotor:
+  0: 0
+  1: 1
+  4: 0
+  5: 1
+  8: 0
+  9: 1
+  12: 0
+  13: 1
+  16: -1
+  17: -1
+
+# List of all timeslots in the schedule. Timeslots will be executed
+# in the order specified here, starting with the first listed.
+# The list is repeated after the last slot is completed.
+timeslots:
+  0:                         # ID of the timeslot, sent to the switch.
+    affected_rotor: 1        # Which rotor moved; used to notify MPI procs, if any.
+    rotor_state: 0           # The new state of the rotor. If != 0, then procs are notified.
+    slot_delay_us: 100       # Time until the next slot, in microseconds.
+    byte_allocation_us: 0    # Microseconds that the endhosts can send over this rotor for.
+  1:
+    affected_rotor: 1
+    rotor_state: 1
+    slot_delay_us: 400
+    byte_allocation_us: 900
+  2:
+    affected_rotor: 0
+    rotor_state: 0
+    slot_delay_us: 100
+    byte_allocation_us: 0
+  3:
+    affected_rotor: 0
+    rotor_state: 1
+    slot_delay_us: 400
+    byte_allocation_us: 900
+  4:
+    affected_rotor: 1
+    rotor_state: 0
+    slot_delay_us: 100
+    byte_allocation_us: 0
+  5:
+    affected_rotor: 1
+    rotor_state: 2
+    slot_delay_us: 400
+    byte_allocation_us: 900
+  6:
+    affected_rotor: 0
+    rotor_state: 0
+    slot_delay_us: 100
+    byte_allocation_us: 0
+  7:
+    affected_rotor: 0
+    rotor_state: 2
+    slot_delay_us: 400
+    byte_allocation_us: 900
+
+# Order to execute the timeslots in.
+timeslot_order: [0,1,2,3,4,5,6,7]
+
+# The connection patterns of each rotor for its different states.
+# This is used by endhosts to determine who exactly they should send
+# to when receiving a timeslot update from the controller.
+# The initial index is the rotor ID, and then the subindex is the state.
+# The array in a (rotor, state) entry represents that the i-th index
+# is connected to the value at that index (should be symmetric).
+mappings:
+  0:
+    0: []
+    1: [3,2,1,0]
+    2: [2,3,0,1]
+  1:
+    0: []
+    1: [1,0,3,2]
+    2: [3,2,1,0]
+
