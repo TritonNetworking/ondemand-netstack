@@ -1,0 +1,3 @@
+[submodule "alt_src/bulk_mpi/yaml-cpp"]
+	path = alt_src/bulk_mpi/yaml-cpp
+	url = git@github.com:jbeder/yaml-cpp.git
