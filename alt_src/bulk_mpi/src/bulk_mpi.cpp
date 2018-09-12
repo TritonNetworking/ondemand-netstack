@@ -6,19 +6,18 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
 #include "yaml-cpp/yaml.h"
+#include "globals.h"
 
-#define DATA_COLOR 0xDA1AC0D3
-#define SYNC_COLOR 0xBA3BC0D3
+int world_size, data_world_size, sync_world_size;
+int world_rank, data_rank, sync_rank;
+MPI_Comm data_comm, sync_comm;
 
-static int world_size, data_world_size, sync_world_size;
-static int world_rank, data_rank, sync_rank;
-static MPI_Comm data_comm, sync_comm;
+char* config_file;
+uint64_t base_time;
 
-static char* config_file;
-static uint64_t base_time;
-
-static YAML::Node bulk_config;
+YAML::Node bulk_config;
 
 void MPI_Setup() {
     MPI_Init(NULL, NULL);
@@ -76,11 +75,40 @@ int usage() {
 }
 
 void print_test_data() {
-    printf("world_rank: %d\tdata_rank: %d\tsync_rank: %d\n", world_rank, data_rank, sync_rank);
+    printf("base_time: %lu\tworld_rank: %d\tdata_rank: %d\tsync_rank: %d\n",
+           base_time, world_rank, data_rank, sync_rank);
     if(bulk_config["test_value"])
         printf("The line is:\n%s\n", bulk_config["test_value"].as<std::string>().c_str());
     else
         printf("Error: no line found!\n");
+}
+
+int run_designated_task() {
+    // Get config node
+    YAML::Node rank_to_id = bulk_config["rank_to_id"];
+    if(rank_to_id.Type() != YAML::NodeType::Map){
+        fprintf(stderr, "rank_to_id is invalid\n");
+        return -1;
+    }
+    YAML::Node this_id = rank_to_id[world_rank];
+    if(this_id.Type() != YAML::NodeType::Scalar){
+        fprintf(stderr, "rank_to_id for node %d is invalid\n", world_rank);
+        return -1;
+    }
+
+    // Get the type of thing this node is and call the function for it
+    std::string id_str = this_id.as<std::string>();
+    if(id_str.compare("control") == 0){
+        printf("world_rank=%d\tcontrol\n", world_rank);
+    } else
+    if (id_str.compare("dummy") == 0) {
+        printf("world_rank=%d\tdummy\n", world_rank);
+    } else {
+        int id_val = this_id.as<int>();
+        printf("world_rank=%d\tid_val=%d\n", world_rank, id_val);
+    }
+
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -94,8 +122,7 @@ int main(int argc, char** argv) {
 
     MPI_Setup();
 
-    // DO THE THING
-    print_test_data();
+    run_designated_task();
 
     MPI_Teardown();
 

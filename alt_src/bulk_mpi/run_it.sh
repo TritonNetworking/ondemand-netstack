@@ -2,7 +2,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
 /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpirun \
-    -np 5 --hostfile config/test_hfile --rankfile config/test_rfile --report-bindings \
+    -np 9 --hostfile config/test_hfile --rankfile config/test_rfile --report-bindings \
     -mca coll_hcoll_enable 0 \
     -mca pml ob1 --mca btl openib,self,vader \
     --mca btl_openib_cpc_include rdmacm \
