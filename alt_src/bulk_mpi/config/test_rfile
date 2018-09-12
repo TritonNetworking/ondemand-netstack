@@ -1,5 +1,13 @@
 rank 0=b10-29.sysnet.ucsd.edu slot=14
+
 rank 1=b09-38.sysnet.ucsd.edu slot=14
+rank 2=b09-38.sysnet.ucsd.edu slot=15
+
 rank 3=b09-40.sysnet.ucsd.edu slot=14
-rank 2=b09-42.sysnet.ucsd.edu slot=14
-rank 4=b09-44.sysnet.ucsd.edu slot=14
+rank 4=b09-40.sysnet.ucsd.edu slot=15
+
+rank 5=b09-42.sysnet.ucsd.edu slot=14
+rank 6=b09-42.sysnet.ucsd.edu slot=15
+
+rank 7=b09-44.sysnet.ucsd.edu slot=14
+rank 8=b09-44.sysnet.ucsd.edu slot=15

@@ -1,1 +1,33 @@
 test_value: "Somewhere, there is a finish line"
+
+id_to_rank:
+  0: [1,2]
+  1: [3,4]
+  2: [5,6]
+  3: [7,8]
+  control: 0
+  dummy: 9
+
+rank_to_id:
+  0: control
+  9: dummy
+  1: 0
+  2: 0
+  3: 1
+  4: 1
+  5: 2
+  6: 2
+  7: 3
+  8: 3
+
+rank_to_rotor:
+  0: -1
+  9: -1
+  1: 0
+  2: 1
+  3: 0
+  4: 1
+  5: 0
+  6: 1
+  7: 0
+  8: 1
