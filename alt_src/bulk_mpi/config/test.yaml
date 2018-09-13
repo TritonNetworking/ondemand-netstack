@@ -1,5 +1,22 @@
 test_value: "Somewhere, there is a finish line"
 
+chunk_size_mb: 200
+num_chunks: 10
+warmup_iters: 10
+
+min_exp_delay_ns: 100000000
+exp_duration_ms: 2000
+
+guard_time_ns: 10000
+prealloc_delay_ns: 500
+link_rate_gbps: 10
+
+num_rotors: 2
+num_hosts: 4
+
+magic: 0xdeed
+done_magic: 0xd00d
+
 id_to_rank:
   0: [1,2]
   1: [3,4]
@@ -31,3 +48,60 @@ rank_to_rotor:
   6: 1
   7: 0
   8: 1
+
+
+timeslots:
+  0:
+    affected_rotor: 1
+    rotor_state: 1
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  1:
+    affected_rotor: 0
+    rotor_state: 0
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  2:
+    affected_rotor: 0
+    rotor_state: 1
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  3:
+    affected_rotor: 1
+    rotor_state: 0
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  4:
+    affected_rotor: 1
+    rotor_state: 2
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  5:
+    affected_rotor: 0
+    rotor_state: 0
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  6:
+    affected_rotor: 0
+    rotor_state: 2
+    slot_delay_us: 250
+    byte_allocation_us: 500
+  7:
+    affected_rotor: 1
+    rotor_state: 0
+    slot_delay_us: 250
+    byte_allocation_us: 500
+
+timeslot_order: [0,1,2,3,4,5,6,7]
+
+total_period_ns: 2000000
+
+mappings:
+  0:
+    0: []
+    1: [3,2,1,0]
+    2: [2,3,0,1]
+  1:
+    0: []
+    1: [1,0,3,2]
+    2: [3,2,1,0]
