@@ -13,22 +13,22 @@
 #include "run_funcs.h"
 #include "stats.h"
 
-int run_as_dummy() {
+int run_as_endhost(uint id_val) {
     YAML::Node id_to_rank = load_or_abort(bulk_config, "id_to_rank");
     int control_host = id_to_rank["control"].as<int>();
     uint done_magic = load_or_abort(bulk_config, "done_magic").as<uint>();
 
-    char dummy_buffer[SYNC_PKT_SIZE];
+    char sync_buffer[SYNC_PKT_SIZE];
     while(true) {
-        MPI_Request dummy_req;
-        int dummy_recv_done = 0;
-        MPI_Irecv(dummy_buffer, SYNC_PKT_SIZE, MPI_CHAR, control_host,
-                  MPI_ANY_TAG, sync_comm, &dummy_req);
-        while(!dummy_recv_done)
-            MPI_Test(&dummy_req, &dummy_recv_done, MPI_STATUS_IGNORE);
+        MPI_Request sync_req;
+        int sync_recv_done = 0;
+        MPI_Irecv(sync_buffer, SYNC_PKT_SIZE, MPI_CHAR, control_host,
+                  MPI_ANY_TAG, sync_comm, &sync_req);
+        while(!sync_recv_done)
+            MPI_Test(&sync_req, &sync_recv_done, MPI_STATUS_IGNORE);
         record_stats_entry();
 
-        if (is_magic_pkt(dummy_buffer, SYNC_PKT_SIZE, done_magic)) {
+        if (is_magic_pkt(sync_buffer, SYNC_PKT_SIZE, done_magic)) {
             break;
         }
     }

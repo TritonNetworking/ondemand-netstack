@@ -9,6 +9,9 @@
 
 #include "yaml-cpp/yaml.h"
 #include "globals.h"
+#include "utils.h"
+#include "run_funcs.h"
+#include "stats.h"
 
 int world_size, data_world_size, sync_world_size;
 int world_rank, data_rank, sync_rank;
@@ -18,6 +21,9 @@ char* config_file;
 uint64_t base_time;
 
 YAML::Node bulk_config;
+
+uint64_t *global_stats = NULL;
+int global_stats_cnt = -1;
 
 void MPI_Setup() {
     MPI_Init(NULL, NULL);
@@ -85,7 +91,7 @@ void print_test_data() {
 
 int run_designated_task() {
     // Get config node
-    YAML::Node rank_to_id = bulk_config["rank_to_id"];
+    YAML::Node rank_to_id = load_or_abort(bulk_config, "rank_to_id");
     if(rank_to_id.Type() != YAML::NodeType::Map){
         fprintf(stderr, "rank_to_id is invalid\n");
         return -1;
@@ -98,15 +104,21 @@ int run_designated_task() {
 
     // Get the type of thing this node is and call the function for it
     std::string id_str = this_id.as<std::string>();
+    // wait_for_debugger();
     if(id_str.compare("control") == 0){
-        printf("world_rank=%d\tcontrol\n", world_rank);
+        run_as_control();
+        // printf("world_rank=%d\tcontrol\n", world_rank);
     } else
     if (id_str.compare("dummy") == 0) {
-        printf("world_rank=%d\tdummy\n", world_rank);
+        run_as_dummy();
+        // printf("world_rank=%d\tdummy\n", world_rank);
     } else {
-        int id_val = this_id.as<int>();
-        printf("world_rank=%d\tid_val=%d\n", world_rank, id_val);
+        uint id_val = this_id.as<uint>();
+        run_as_endhost(id_val);
+        // printf("world_rank=%d\tid_val=%u\n", world_rank, id_val);
     }
+
+    printf("world_rank=%d did the thing!\n", world_rank);
 
     return 0;
 }
@@ -122,9 +134,14 @@ int main(int argc, char** argv) {
 
     MPI_Setup();
 
-    run_designated_task();
+    allocate_global_stats();
+
+    int ret = run_designated_task();
+
+    print_global_stats(world_rank);
+    free_global_stats();
 
     MPI_Teardown();
 
-    return 0;
+    return ret;
 }
