@@ -117,7 +117,7 @@ void send_sync_packets() {
     if (rotor_state == 0) {
         MPI_Request to_dummy;
         int to_dummy_completed = 0;
-        MPI_Issend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
+        MPI_Isend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
                    0, sync_comm, &to_dummy);
         while(!to_dummy_completed)
             MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
@@ -130,7 +130,7 @@ void send_sync_packets() {
 
         for(int i = 0; i < num_hosts; i++){
             int target = next_targets[i];
-            MPI_Issend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
+            MPI_Isend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
                        0, sync_comm, &to_endhosts[i]);
         }
 
