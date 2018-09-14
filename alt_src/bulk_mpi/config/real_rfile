@@ -1,0 +1,42 @@
+rank 0=b09-30.sysnet.ucsd.edu slot=13
+rank 8=b09-30.sysnet.ucsd.edu slot=14
+rank 16=b09-30.sysnet.ucsd.edu slot=15
+rank 24=b09-30.sysnet.ucsd.edu slot=16
+
+rank 1=b09-32.sysnet.ucsd.edu slot=13
+rank 9=b09-32.sysnet.ucsd.edu slot=14
+rank 17=b09-32.sysnet.ucsd.edu slot=15
+rank 25=b09-32.sysnet.ucsd.edu slot=16
+
+rank 2=b09-42.sysnet.ucsd.edu slot=13
+rank 10=b09-42.sysnet.ucsd.edu slot=14
+rank 18=b09-42.sysnet.ucsd.edu slot=15
+rank 26=b09-42.sysnet.ucsd.edu slot=16
+
+rank 3=b09-38.sysnet.ucsd.edu slot=13
+rank 11=b09-38.sysnet.ucsd.edu slot=14
+rank 19=b09-38.sysnet.ucsd.edu slot=15
+rank 27=b09-38.sysnet.ucsd.edu slot=16
+
+rank 4=b09-44.sysnet.ucsd.edu slot=13
+rank 12=b09-44.sysnet.ucsd.edu slot=14
+rank 20=b09-44.sysnet.ucsd.edu slot=15
+rank 28=b09-44.sysnet.ucsd.edu slot=16
+
+rank 5=b09-40.sysnet.ucsd.edu slot=13
+rank 13=b09-40.sysnet.ucsd.edu slot=14
+rank 21=b09-40.sysnet.ucsd.edu slot=15
+rank 29=b09-40.sysnet.ucsd.edu slot=16
+
+rank 6=b09-34.sysnet.ucsd.edu slot=13
+rank 14=b09-34.sysnet.ucsd.edu slot=14
+rank 22=b09-34.sysnet.ucsd.edu slot=15
+rank 30=b09-34.sysnet.ucsd.edu slot=16
+
+rank 7=b09-36.sysnet.ucsd.edu slot=13
+rank 15=b09-36.sysnet.ucsd.edu slot=14
+rank 23=b09-36.sysnet.ucsd.edu slot=15
+rank 31=b09-36.sysnet.ucsd.edu slot=16
+
+rank 32=b10-29.sysnet.ucsd.edu slot=1:7
+rank 33=b10-31.sysnet.ucsd.edu slot=1:7

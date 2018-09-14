@@ -1,6 +1,7 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
+taskset --cpu-list 11,51,13,53,15,55,17,57,19,59,21,61 \
 /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpirun \
     -np 10 --hostfile config/test_hfile --rankfile config/test_rfile --report-bindings \
     -mca coll_hcoll_enable 0 \
