@@ -31,11 +31,13 @@ void MPI_Setup() {
     // Setup global MPI
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    // printf("Done with world rank\n");
 
     // Setup sync MPI
     MPI_Comm_split(MPI_COMM_WORLD, SYNC_COLOR, world_rank, &sync_comm);
     MPI_Comm_size(sync_comm, &sync_world_size);
     MPI_Comm_rank(sync_comm, &sync_rank);
+    // printf("Done with sync rank\n");
 
     // Setup data MPI
     MPI_Comm_split(MPI_COMM_WORLD, DATA_COLOR, world_rank, &data_comm);
@@ -133,12 +135,13 @@ int main(int argc, char** argv) {
     }
 
     MPI_Setup();
+    // printf("MPI Setup done\n");
 
     allocate_global_stats();
 
     int ret = run_designated_task();
 
-    print_global_stats(world_rank);
+    write_global_stats(world_rank, "/tmp/bulk_mpi_stats.txt");
     free_global_stats();
 
     MPI_Teardown();
