@@ -15,7 +15,7 @@
 #include "stats.h"
 
 static uint64_t now, next_trigger_real, next_trigger_virt;
-static uint64_t period, guard_time, prealloc_delay;
+static uint64_t period_ns, guard_time, prealloc_delay;
 static uint64_t min_exp_delay, exp_duration_ns, exp_end_time;
 static uint link_rate_gbps;
 static uint magic, done_magic;
@@ -23,6 +23,7 @@ static int num_hosts, num_rotors;
 
 static int ts_index, num_ts;
 static std::vector<uint> ts_order;
+static std::vector<int> next_targets;
 static YAML::Node timeslots, mappings;
 
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
@@ -41,7 +42,7 @@ inline void wait_until(uint64_t target) {
 }
 
 void setup_from_yaml() {
-    period = load_or_abort(bulk_config, "total_period_ns").as<uint64_t>();
+    period_ns = load_or_abort(bulk_config, "total_period_ns").as<uint64_t>();
     guard_time = load_or_abort(bulk_config, "guard_time_ns").as<uint64_t>();
     prealloc_delay = load_or_abort(bulk_config, "prealloc_delay_ns").as<uint64_t>();
 
@@ -67,17 +68,19 @@ void setup_from_yaml() {
     min_exp_delay = load_or_abort(bulk_config, "min_exp_delay_ns").as<uint64_t>();
 
     now = get_time_ns();
-    next_trigger_real = base_time;
+    next_trigger_real = now;
     while(next_trigger_real < (now + min_exp_delay)) {
         now = get_time_ns();
-        next_trigger_real += period;
+        next_trigger_real += period_ns;
     }
+    exp_end_time = now + exp_duration_ns;
 }
 
 void load_next_timeslot() {
     while(next_trigger_virt <= now){
         next_ts_id = ts_order[ts_index];
         next_ts = timeslots[next_ts_id];
+        ts_index = (ts_index + 1) % num_ts;
 
         slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
         byte_allocation_ns = next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul;
@@ -94,6 +97,12 @@ void load_next_timeslot() {
 
         next_trigger_real += slot_delay_ns;
         next_trigger_virt = next_trigger_real - prealloc_delay;
+
+        next_targets.clear();
+        for(int i = 0; i < num_hosts; i++){
+            int target = id_to_rank[i][affected_rotor].as<int>();
+            next_targets.push_back(target);
+        }
 
         now = get_time_ns();
     }
@@ -120,8 +129,7 @@ void send_sync_packets() {
         int endhosts_done = 0;
 
         for(int i = 0; i < num_hosts; i++){
-            to_endhosts_completed[i] = 0;
-            int target = id_to_rank[i][affected_rotor].as<int>();
+            int target = next_targets[i];
             MPI_Issend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
                        0, sync_comm, &to_endhosts[i]);
         }
@@ -158,21 +166,23 @@ void send_final_packets() {
 }
 
 int run_as_control() {
-    try{
-        setup_from_yaml();
-    }
-    catch (YAML::Exception& e) {
-        std::cout << e.what() << "\n";
-    }
+    printf("Starting control host...\n");
+
+    setup_from_yaml();
 
     while(next_trigger_real < exp_end_time) {
         load_next_timeslot();
+        // printf("Loaded ts\n");
         wait_until(next_trigger_virt);
+        // printf("Wait done\n");
         send_sync_packets();
+        // printf("Sent sync\n");
         record_stats_entry();
         now = get_time_ns();
+        // printf("loop done\n");
     }
 
+    // printf("Sending final packets\n");
     send_final_packets();
 
     return 0;
