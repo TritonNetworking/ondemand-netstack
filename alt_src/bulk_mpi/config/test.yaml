@@ -5,7 +5,7 @@ num_chunks: 10
 warmup_iters: 10
 
 min_exp_delay_ns: 100000000
-recover_delay_ns: 20000
+recovery_delay_ns: 20000
 exp_duration_ms: 10000
 
 guard_time_ns: 10000
