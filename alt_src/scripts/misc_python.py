@@ -54,3 +54,20 @@ def plot_cdf_set_all(exps,
                              markersize=0.0,
                              legend_title="Config",
                              drawstyle='steps-post')
+
+import yaml
+def plot_ethtool_delta(yaml_before, yaml_after):
+    with open(yaml_before, "r") as f:
+        before = yaml.load(f)["NIC statistics"]
+    with open(yaml_after, "r") as f:
+        after = yaml.load(f)["NIC statistics"]
+
+    for k in before:
+        try:
+            b = int(before[k])
+            a = int(after[k])
+            if a - b != 0:
+                print("%s: %d" % (k, a-b))
+        except:
+            continue
+

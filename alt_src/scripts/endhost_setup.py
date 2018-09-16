@@ -7,7 +7,7 @@ import sys
 
 DEFAULT_IRQ_PATH    = '/proc/irq'
 DEFAULT_AFF_FILE    = 'smp_affinity'
-DEFAULT_LCORE_IDS   = [13,33,14,34,15,35,16,36,17,37,18,38]
+DEFAULT_LCORE_IDS   = [8,28,9,29,10,30,11,31,12,32,13,33,14,34,15,35,16,36,17,37,18,38,19,39]
 DEFAULT_FREQ_FILE   ="/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor"
 
 LOWER_CPU_LIMIT=32
