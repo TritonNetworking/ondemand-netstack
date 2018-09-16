@@ -16,9 +16,9 @@
 
 static uint64_t now, next_trigger_real, next_trigger_virt;
 static uint64_t period_ns, guard_time, prealloc_delay;
-static uint64_t min_exp_delay, exp_duration_ns, exp_end_time;
+static uint64_t min_exp_delay, recovery_delay, exp_duration_ns, exp_end_time;
 static uint link_rate_gbps;
-static uint magic, done_magic;
+static uint dummy_magic, endhost_magic, done_magic;
 static int num_hosts, num_rotors;
 
 static int ts_index, num_ts;
@@ -34,7 +34,8 @@ static uint next_ts_id;
 static uint64_t slot_delay_ns, byte_allocation_ns, bytes_to_send;
 static int affected_rotor, rotor_state;
 
-static char send_buf[SYNC_PKT_SIZE];
+static char send_dummy_buf[SYNC_PKT_SIZE];
+static char send_hosts_buf[SYNC_PKT_SIZE];
 
 inline void wait_until(uint64_t target) {
     while(now < target)
@@ -44,9 +45,11 @@ inline void wait_until(uint64_t target) {
 void setup_from_yaml() {
     period_ns = load_or_abort(bulk_config, "total_period_ns").as<uint64_t>();
     guard_time = load_or_abort(bulk_config, "guard_time_ns").as<uint64_t>();
+    recovery_delay = load_or_abort(bulk_config, "recovery_delay_ns").as<uint64_t>();
     prealloc_delay = load_or_abort(bulk_config, "prealloc_delay_ns").as<uint64_t>();
 
-    magic = load_or_abort(bulk_config, "magic").as<uint>();
+    dummy_magic = load_or_abort(bulk_config, "dummy_magic").as<uint>();
+    endhost_magic = load_or_abort(bulk_config, "endhost_magic").as<uint>();
     done_magic = load_or_abort(bulk_config, "done_magic").as<uint>();
 
     link_rate_gbps = load_or_abort(bulk_config, "link_rate_gbps").as<uint>();
@@ -77,61 +80,67 @@ void setup_from_yaml() {
 }
 
 void load_next_timeslot() {
-    while(next_trigger_virt <= now){
-        next_ts_id = ts_order[ts_index];
-        next_ts = timeslots[next_ts_id];
-        ts_index = (ts_index + 1) % num_ts;
+    next_ts_id = ts_order[ts_index];
+    next_ts = timeslots[next_ts_id];
+    ts_index = (ts_index + 1) % num_ts;
 
-        slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
-        byte_allocation_ns = next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul;
-        // This'll just be calculated at the endhosts.
-        // if(byte_allocation_ns)
-        //     bytes_to_send = get_bytes_for_time(byte_allocation_ns - guard_time_ns,
-        //                                        link_rate_gbps,
-        //                                        (uint)num_hosts);
-        // else
-        //     bytes_to_send = 0;
+    slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
+    byte_allocation_ns = next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul;
+    // This'll just be calculated at the endhosts.
+    // if(byte_allocation_ns)
+    //     bytes_to_send = get_bytes_for_time(byte_allocation_ns - guard_time_ns,
+    //                                        link_rate_gbps,
+    //                                        (uint)num_hosts);
+    // else
+    //     bytes_to_send = 0;
 
-        affected_rotor = next_ts["affected_rotor"].as<int>();
-        rotor_state = next_ts["affected_rotor"].as<int>();
+    affected_rotor = next_ts["affected_rotor"].as<int>();
+    rotor_state = next_ts["affected_rotor"].as<int>();
 
-        next_trigger_real += slot_delay_ns;
-        next_trigger_virt = next_trigger_real - prealloc_delay;
+    next_trigger_real += slot_delay_ns;
+    // Recovery state. If we went too long, don't skip slots, since
+    // that will skip actual timeslots at the switch and possibly drop
+    // low-latency traffic.
+    if(next_trigger_real < now){
+        next_trigger_real = now + recovery_delay + prealloc_delay;
+    }
+    next_trigger_virt = next_trigger_real - prealloc_delay;
 
-        next_targets.clear();
-        for(int i = 0; i < num_hosts; i++){
-            int target = id_to_rank[i][affected_rotor].as<int>();
-            next_targets.push_back(target);
-        }
-
-        now = get_time_ns();
+    next_targets.clear();
+    for(int i = 0; i < num_hosts; i++){
+        int target = id_to_rank[i][affected_rotor].as<int>();
+        next_targets.push_back(target);
     }
 
-    if(make_pkt(send_buf, SYNC_PKT_SIZE, magic, next_ts_id, byte_allocation_ns)){
+    now = get_time_ns();
+
+    if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, dummy_magic, next_ts_id, byte_allocation_ns)){
+        fprintf(stderr, "Failed to make sync packet at control host\n");
+        MPI_Abort(MPI_COMM_WORLD, -1);
+    }
+
+    if(make_pkt(send_hosts_buf, SYNC_PKT_SIZE, endhost_magic, next_ts_id, byte_allocation_ns)){
         fprintf(stderr, "Failed to make sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
 }
 
 void send_sync_packets() {
-    if (rotor_state == 0) {
-        MPI_Request to_dummy;
-        int to_dummy_completed = 0;
-        MPI_Isend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
-                   0, sync_comm, &to_dummy);
-        while(!to_dummy_completed)
-            MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
-    }
+    MPI_Request to_dummy;
+    int to_dummy_completed = 0;
+    MPI_Isend(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
+               0, sync_comm, &to_dummy);
+
     // A new rotor came up, along with a new one going down
-    else {
+    if (rotor_state != 0) {
         MPI_Request to_endhosts[num_hosts];
         int to_endhosts_completed[num_hosts];
         int endhosts_done = 0;
 
         for(int i = 0; i < num_hosts; i++){
             int target = next_targets[i];
-            MPI_Isend(send_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
-                       0, sync_comm, &to_endhosts[i]);
+            MPI_Isend(send_hosts_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
+                      0, sync_comm, &to_endhosts[i]);
         }
 
         while(!endhosts_done) {
@@ -146,20 +155,23 @@ void send_sync_packets() {
             }
         }
     }
+
+    while(!to_dummy_completed)
+        MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
 }
 
 void send_final_packets() {
-    if(make_pkt(send_buf, SYNC_PKT_SIZE, done_magic, 0, 0)){
+    if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, done_magic, 0, 0)){
         fprintf(stderr, "Failed to make final sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
-    MPI_Send(send_buf, SYNC_PKT_SIZE, MPI_CHAR,
+    MPI_Send(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR,
              dummy_host, 0, sync_comm);
     for(int i = 0; i < num_hosts; i++) {
         for (int j = 0; j < num_rotors; j++) {
             int target = id_to_rank[i][j].as<int>();
-            MPI_Send(send_buf, SYNC_PKT_SIZE, MPI_CHAR,
+            MPI_Send(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR,
              target, 0, sync_comm);
         }
     }

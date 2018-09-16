@@ -3,7 +3,8 @@ num_chunks: 10
 warmup_iters: 10
 
 min_exp_delay_ns: 100000000
-exp_duration_ms: 10000
+recover_delay_ns: 20000
+exp_duration_ms: 100000
 
 guard_time_ns: 10000
 prealloc_delay_ns: 500
@@ -12,7 +13,8 @@ link_rate_gbps: 10
 num_rotors: 4
 num_hosts: 8
 
-magic: 0x73796e63
+dummy_magic: 0x73796e63
+endhost_magic: 0xbeefcafe
 done_magic: 0xdeadd00d
 
 id_to_rank:

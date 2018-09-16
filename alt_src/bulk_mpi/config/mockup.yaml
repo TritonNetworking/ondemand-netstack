@@ -13,6 +13,9 @@ warmup_iters: 10
 # before beginning the schedule.
 min_exp_delay_ns: 100000000
 
+# Delay to wait for the next timeslot during recovery.
+recover_delay_ns: 10000
+
 # Duration of the experiment in milliseconds.
 exp_duration_ms: 10000
 
