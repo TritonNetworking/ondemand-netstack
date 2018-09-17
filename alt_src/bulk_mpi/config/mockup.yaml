@@ -8,6 +8,10 @@ num_chunks: 10
 # sending actual bulk data.
 warmup_iters: 10
 
+# Switch to toggle sending any bulk data at all. If false,
+# endhosts will act as dummy hosts.
+send_bulk_data: false
+
 # Minimum offset to start the experiment.
 # The controller will wait at least this long
 # before beginning the schedule.
@@ -18,6 +22,9 @@ recovery_delay_ns: 10000
 
 # Duration of the experiment in milliseconds.
 exp_duration_ms: 10000
+
+# Number of bytes to send in each bulk request.
+bytes_per_req: 32768
 
 # Guard time represents the portion of each timeslot that is 'unsafe'.
 # Endhosts regularly delay or do not transmit at line rate,
@@ -38,6 +45,9 @@ link_rate_gbps: 10
 # all rotors, and each endhost will have this many MPI tasks,
 # one for each Rotor.
 num_rotors: 2
+
+# The number of states each rotor may be in.
+num_states: 2
 
 # The number of endhosts in the system.
 num_hosts: 4

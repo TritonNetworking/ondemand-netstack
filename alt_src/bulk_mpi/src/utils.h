@@ -6,22 +6,31 @@
 #include <mpi.h>
 #include "yaml-cpp/yaml.h"
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+
 static inline uint64_t get_time_ns() {
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  return (((uint64_t) ts.tv_sec) * 1000000000) + ts.tv_nsec;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (((uint64_t) ts.tv_sec) * 1000000000) + ts.tv_nsec;
 }
 
 static inline uint64_t get_us() {
-  struct timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  return (((uint64_t) ts.tv_sec) * 1000000) + (ts.tv_nsec / 1000);
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (((uint64_t) ts.tv_sec) * 1000000) + (ts.tv_nsec / 1000);
 }
 
 static inline uint64_t get_bytes_for_time(uint64_t duration_ns,
                                           uint link_rate_gbps,
                                           uint num_active_rotors) {
     return (duration_ns * link_rate_gbps) / (8 * (num_active_rotors));
+}
+
+static inline uint64_t get_time_for_bytes(uint64_t bytes_ns,
+                                          uint link_rate_gbps,
+                                          uint num_active_rotors) {
+    return (bytes_ns * 8 * num_active_rotors) / (link_rate_gbps);
 }
 
 static YAML::Node load_or_abort(YAML::Node &config, const char* key) {
