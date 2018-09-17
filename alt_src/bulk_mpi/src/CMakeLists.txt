@@ -10,4 +10,4 @@ FILE(GLOB bulk_mpi_SRC
 )
 
 ADD_EXECUTABLE(bulk_mpi ${bulk_mpi_SRC})
-TARGET_LINK_LIBRARIES(bulk_mpi yaml-cpp)
+TARGET_LINK_LIBRARIES(bulk_mpi yaml-cpp sha256)

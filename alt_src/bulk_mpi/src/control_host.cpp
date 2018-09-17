@@ -42,7 +42,7 @@ inline void wait_until(uint64_t target) {
         now = get_time_ns();
 }
 
-void setup_from_yaml() {
+static void setup_from_yaml() {
     period_ns = load_or_abort(bulk_config, "total_period_ns").as<uint64_t>();
     guard_time = load_or_abort(bulk_config, "guard_time_ns").as<uint64_t>();
     recovery_delay = load_or_abort(bulk_config, "recovery_delay_ns").as<uint64_t>();
@@ -79,13 +79,13 @@ void setup_from_yaml() {
     exp_end_time = now + exp_duration_ns;
 }
 
-void load_next_timeslot() {
+static void load_next_timeslot() {
     next_ts_id = ts_order[ts_index];
     next_ts = timeslots[next_ts_id];
     ts_index = (ts_index + 1) % num_ts;
 
     slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
-    byte_allocation_ns = next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul;
+    byte_allocation_ns = (next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul) - guard_time;
     // This'll just be calculated at the endhosts.
     // if(byte_allocation_ns)
     //     bytes_to_send = get_bytes_for_time(byte_allocation_ns - guard_time_ns,
@@ -125,7 +125,7 @@ void load_next_timeslot() {
     }
 }
 
-void send_sync_packets() {
+static void send_sync_packets() {
     MPI_Request to_dummy;
     int to_dummy_completed = 0;
     MPI_Isend(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
@@ -160,7 +160,7 @@ void send_sync_packets() {
         MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
 }
 
-void send_final_packets() {
+static void send_final_packets() {
     if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, done_magic, 0, 0)){
         fprintf(stderr, "Failed to make final sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
