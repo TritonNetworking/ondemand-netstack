@@ -13,6 +13,7 @@
 #include "run_funcs.h"
 #include "stats.h"
 #include "fake_data.h"
+#include "sha256.h"
 
 static uint64_t now;
 static uint my_rank, my_id, my_rotor;
@@ -243,11 +244,49 @@ static void terminate_transfers() {
 }
 
 static void write_endhost_results() {
+    char fname[128];
+    snprintf(fname, 128, "/tmp/endhost_results_rank_%d.txt", my_rank);
+    FILE *resf = fopen(fname, "w");
+    if(resf == NULL){
+        fprintf(stderr, "Failed to write endhost results for rank %d\n", my_rank);
+        return;
+    }
 
+    for(auto it = inc_data_map.begin(); it != inc_data_map.end(); it++) {
+        fprintf(resf, "RECV %d->%d:", my_rank, it->first);
+        struct fake_endhost_data *edata = it->second;
+        for(int i = 0; i < edata->num_bufs; i++) {
+            fprintf(resf, " %s", sha256(std::string(edata->data_arrs[i], edata->buf_size)).c_str());
+        }
+        fprintf(resf, "\n");
+    }
+
+    for(auto it = out_data_map.begin(); it != out_data_map.end(); it++) {
+        fprintf(resf, "SEND %d->%d:", my_rank, it->first);
+        struct fake_endhost_data *edata = it->second;
+        for(int i = 0; i < edata->num_bufs; i++) {
+            fprintf(resf, " %s", sha256(std::string(edata->data_arrs[i], edata->buf_size)).c_str());
+        }
+        fprintf(resf, "\n");
+    }
+
+    fclose(resf);
 }
 
 static void write_endhost_stats() {
+    char fname[128];
+    snprintf(fname, 128, "/tmp/endhost_stats_rank_%d.txt", my_rank);
+    FILE *statsf = fopen(fname, "w");
+    if(statsf == NULL){
+        fprintf(stderr, "Failed to write endhost stats for rank %d\n", my_rank);
+        return;
+    }
 
+    for(int i = 2; i < bulk_stats->cnt; i++) {
+        fprintf(statsf, "%lu ", bulk_stats->entries[i]);
+    }
+    fprintf(statsf, "\n");
+    fclose(statsf);
 }
 
 static void setup_endhost_stats() {
