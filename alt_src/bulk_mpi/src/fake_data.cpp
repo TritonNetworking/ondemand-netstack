@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>
+#include <sys/random.h>
 
 #include "fake_data.h"
 
@@ -43,8 +44,9 @@ int fill_endhost_data(struct fake_endhost_data* edata) {
     for(int i = 0; i < edata->num_bufs; i++) {
         if(edata->data_arrs[i] == NULL)
             return -1;
-        for (int k = 0; k < edata->buf_size; k++)
-            edata->data_arrs[i][k] = (char)(rand() % 256);
+        // for (int k = 0; k < edata->buf_size; k++)
+        //     edata->data_arrs[i][k] = (char)(rand() % 256);
+        getrandom(edata->data_arrs[i], edata->buf_size, 0);
     }
 
     edata->write_index = edata->num_bufs;
@@ -118,7 +120,7 @@ int send_done_endhost_data(struct fake_endhost_data* edata,
         edata->read_offset += fr;
         bytes_to_account -= fr;
 
-        if(edata->read_offset == edata->buf_size){
+        if(edata->read_offset >= edata->buf_size){
             edata->read_index++;
             edata->read_offset = 0;
         }
@@ -157,7 +159,7 @@ int recv_done_endhost_data(struct fake_endhost_data* edata,
         edata->write_offset += fr;
         bytes_to_account -= fr;
 
-        if(edata->write_offset == edata->buf_size){
+        if(edata->write_offset >= edata->buf_size){
             edata->write_index++;
             edata->write_offset = 0;
         }
