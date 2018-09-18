@@ -89,3 +89,81 @@ fail_alloc:
     free_endhost_data(edata);
     return NULL;
 }
+
+int send_next_endhost_data(struct fake_endhost_data* edata,
+                           char **target_buf,
+                           int *max_bytes,
+                           int max_warmups) {
+    if(edata->read_index >= edata->num_bufs)
+        return -1;
+
+    *target_buf = &(edata->data_arrs[edata->read_index][edata->read_offset]);
+    if(edata->warmups_done < max_warmups){
+        *max_bytes = WARMUP_BYTES_SIZE;
+    } else {
+        *max_bytes = edata->buf_size - edata->read_offset;
+    }
+    return 0;
+}
+
+int send_done_endhost_data(struct fake_endhost_data* edata,
+                           int bytes_done,
+                           int max_warmups) {
+    if(edata->read_index >= edata->num_bufs)
+        return -1;
+
+    int bytes_to_account = bytes_done;
+    while(bytes_to_account > 0 && edata->read_index < edata->num_bufs) {
+        int fr = std::min(bytes_to_account, edata->buf_size - edata->read_offset);
+        edata->read_offset += fr;
+        bytes_to_account -= fr;
+
+        if(edata->read_offset == edata->buf_size){
+            edata->read_index++;
+            edata->read_offset = 0;
+        }
+    }
+    if(edata->warmups_done < max_warmups)
+        edata->warmups_done++;
+
+    return 0;
+}
+
+int recv_next_endhost_data(struct fake_endhost_data* edata,
+                           char **target_buf,
+                           int *max_bytes,
+                           int max_warmups) {
+    if(edata->write_index >= edata->num_bufs)
+        return -1;
+
+    *target_buf = &(edata->data_arrs[edata->write_index][edata->write_offset]);
+    if(edata->warmups_done < max_warmups){
+        *max_bytes = WARMUP_BYTES_SIZE;
+    } else {
+        *max_bytes = edata->buf_size - edata->write_offset;
+    }
+    return 0;
+}
+
+int recv_done_endhost_data(struct fake_endhost_data* edata,
+                           int bytes_done,
+                           int max_warmups) {
+    if(edata->write_index >= edata->num_bufs)
+        return -1;
+
+    int bytes_to_account = bytes_done;
+    while(bytes_to_account > 0 && edata->write_index < edata->num_bufs) {
+        int fr = std::min(bytes_to_account, edata->buf_size - edata->write_offset);
+        edata->write_offset += fr;
+        bytes_to_account -= fr;
+
+        if(edata->write_offset == edata->buf_size){
+            edata->write_index++;
+            edata->write_offset = 0;
+        }
+    }
+    if(edata->warmups_done < max_warmups)
+        edata->warmups_done++;
+
+    return 0;
+}
