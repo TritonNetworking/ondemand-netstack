@@ -30,14 +30,23 @@ static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 static int chunk_size_bytes, num_chunks, warmup_iters;
 static int targets_done, num_targets;
 static std::map<int, int> ts_to_target;
-static std::map<int, struct fake_endhost_data*> inc_data, out_data;
+static std::map<int, struct fake_endhost_data*> inc_data_map, out_data_map;
 
 static uint64_t timeslot_received, ts_allocation, ts_end, ts_fill, ns_per_send;
 static MPI_Request ts_request, inc_request, out_request;
+static int out_bytes, inc_bytes;
 static int tsq_in_progress, inc_in_progress, out_in_progress;
 static char ts_buffer[SYNC_PKT_SIZE];
 
 static uint64_t started_run, ended_run;
+
+struct delta_stats {
+    uint64_t entries[NUM_STAT_ENTRIES];
+    int cnt;
+};
+static struct delta_stats* bulk_stats;
+static uint64_t bulk_started, bulk_done;
+static uint out_cancelled, inc_cancelled;
 
 static void setup_from_yaml() {
     link_rate_gbps = load_or_abort(bulk_config, "link_rate_gbps").as<uint>();
@@ -93,8 +102,8 @@ static int setup_mappings() {
         }
 
         ts_to_target[i] = target_rank;
-        inc_data[target_rank] = target_inc;
-        out_data[target_rank] = target_out;
+        inc_data_map[target_rank] = target_inc;
+        out_data_map[target_rank] = target_out;
     }
 
     num_targets = ts_to_target.size();
@@ -106,20 +115,20 @@ setup_mappings_fail:
     for(int i = 0; i < num_ts; i++) {
         if(ts_to_target.count(i)){
             int target_rank = ts_to_target[i];
-            if(inc_data.count(target_rank))
-                free_endhost_data(inc_data[target_rank]);
-            if(out_data.count(target_rank))
-                free_endhost_data(out_data[target_rank]);
+            if(inc_data_map.count(target_rank))
+                free_endhost_data(inc_data_map[target_rank]);
+            if(out_data_map.count(target_rank))
+                free_endhost_data(out_data_map[target_rank]);
         }
     }
     return -1;
 }
 
 static void free_mappings() {
-    for(auto it = inc_data.begin(); it != inc_data.end(); it++) {
+    for(auto it = inc_data_map.begin(); it != inc_data_map.end(); it++) {
         int target = it->first;
-        struct fake_endhost_data* target_inc = inc_data[target];
-        struct fake_endhost_data* target_out = out_data[target];
+        struct fake_endhost_data* target_inc = inc_data_map[target];
+        struct fake_endhost_data* target_out = out_data_map[target];
 
         free_endhost_data(target_inc);
         free_endhost_data(target_out);
@@ -139,8 +148,8 @@ static int update_timeslot() {
 
         current_target = ts_to_target[current_ts_id];
 
-        ts_end = timeslot_received + (current_ts["byte_allocation_us"].as<uint64_t>() * 1000);
-        ts_fill = get_time_ns();
+        // ts_end = timeslot_received + (current_ts["byte_allocation_us"].as<uint64_t>() * 1000);
+        // ts_fill = get_time_ns();
         return 0;
     } else if(is_magic_pkt(ts_buffer, SYNC_PKT_SIZE, done_magic))
         return 2;
@@ -164,7 +173,7 @@ static int check_for_timeslot() {
     int tsq_done = 0;
     MPI_Test(&ts_request, &tsq_done, MPI_STATUS_IGNORE);
     if (tsq_done){
-        timeslot_received = get_time_ns();
+        // timeslot_received = get_time_ns();
         tsq_in_progress = 0;
         return 1;
     }
@@ -172,20 +181,84 @@ static int check_for_timeslot() {
         return 0;
 }
 
-static void terminate_transfers() {
-
-}
-
 static void start_new_transfers() {
+    char *out_buffer, *inc_buffer;
+    struct fake_endhost_data* inc_edata;
+    struct fake_endhost_data* out_edata;
 
+    if(!inc_in_progress) {
+        inc_edata = inc_data_map[current_target];
+        if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes, warmup_iters) == 0){
+            inc_bytes = std::min((uint64_t)inc_bytes, ts_allocation);
+            MPI_Irecv(inc_buffer, inc_bytes, MPI_CHAR, current_target,
+                      MPI_ANY_TAG, data_comm, &inc_request);
+            inc_in_progress = 1;
+        }
+    }
+
+    if(!out_in_progress) {
+        out_edata = out_data_map[current_target];
+        if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes, warmup_iters) == 0){
+            out_bytes = std::min((uint64_t)out_bytes, ts_allocation);
+            bulk_started = get_time_ns();
+            MPI_Isend(out_buffer, out_bytes, MPI_CHAR, current_target,
+                      0, data_comm, &out_request);
+            out_in_progress = 1;
+        }
+    }
 }
 
 static void check_transfer_states() {
+    if(inc_in_progress) {
+        int inc_done = 0;
+        MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
+        if(inc_done) {
+            recv_done_endhost_data(inc_data_map[current_target], inc_bytes, warmup_iters);
+            inc_in_progress = 0;
+        }
+    }
 
+    if(out_in_progress) {
+        int out_done = 0;
+        MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
+        if(out_done){
+            bulk_done = get_time_ns();
+            bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
+            send_done_endhost_data(out_data_map[current_target], out_bytes, warmup_iters);
+            out_in_progress = 0;
+        }
+    }
+
+}
+
+static void terminate_transfers() {
+    if(inc_in_progress) {
+        MPI_Cancel(&inc_request);
+        inc_in_progress = 0;
+    }
+    if(out_in_progress) {
+        MPI_Cancel(&out_request);
+        out_in_progress = 0;
+    }
 }
 
 static void write_endhost_results() {
 
+}
+
+static void write_endhost_stats() {
+
+}
+
+static void setup_endhost_stats() {
+    bulk_stats = new delta_stats;
+    bulk_stats->cnt = 0;
+    out_cancelled = 0;
+    inc_cancelled = 0;
+}
+
+static void free_endhost_stats() {
+    delete bulk_stats;
 }
 
 int run_bulk_endhost() {
@@ -194,6 +267,8 @@ int run_bulk_endhost() {
         fprintf(stderr, "Host %d: Failed to setup mappings\n", my_rank);
         return -1;
     }
+    setup_endhost_stats();
+
 
     started_run = get_time_ns();
     start_timeslot_recv();
@@ -221,8 +296,11 @@ endhost_done:
     ended_run = get_time_ns();
     terminate_transfers();
     write_endhost_results();
+    write_endhost_stats();
 
     free_mappings();
+    free_endhost_stats();
+
     return 0;
 }
 

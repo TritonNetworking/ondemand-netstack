@@ -86,13 +86,13 @@ static void load_next_timeslot() {
 
     slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
     byte_allocation_ns = (next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul) - guard_time;
-    // This'll just be calculated at the endhosts.
-    // if(byte_allocation_ns)
-    //     bytes_to_send = get_bytes_for_time(byte_allocation_ns - guard_time_ns,
-    //                                        link_rate_gbps,
-    //                                        (uint)num_hosts);
-    // else
-    //     bytes_to_send = 0;
+
+    if(byte_allocation_ns)
+        bytes_to_send = get_bytes_for_time(byte_allocation_ns,
+                                           link_rate_gbps,
+                                           (uint)num_rotors - 1);
+    else
+        bytes_to_send = 0;
 
     affected_rotor = next_ts["affected_rotor"].as<int>();
     rotor_state = next_ts["affected_rotor"].as<int>();
