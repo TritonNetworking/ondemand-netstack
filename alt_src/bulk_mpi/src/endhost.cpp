@@ -23,18 +23,19 @@ static uint endhost_magic, done_magic;
 static int num_hosts, num_states, num_rotors;
 
 static int num_ts, current_ts_id, current_target;
-static YAML::Node current_ts;
+static std::map<std::string, int> current_ts;
 static YAML::Node timeslots, mappings;
 
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 
-static int chunk_size_bytes, num_chunks, warmup_iters;
+static int chunk_size_bytes, num_chunks;
 static int targets_done, num_targets;
 static std::map<int, int> ts_to_target;
 static std::map<int, struct fake_endhost_data*> inc_data_map, out_data_map;
 
 static uint64_t timeslot_received, ts_allocation, ts_end, ts_fill, ns_per_send;
 static MPI_Request ts_request, inc_request, out_request;
+static int out_target, inc_target;
 static int out_bytes, inc_bytes;
 static int tsq_in_progress, inc_in_progress, out_in_progress;
 static char ts_buffer[SYNC_PKT_SIZE];
@@ -54,7 +55,6 @@ static void setup_from_yaml() {
     bytes_per_req = load_or_abort(bulk_config, "bytes_per_req").as<uint>();
     chunk_size_bytes = load_or_abort(bulk_config, "chunk_size_mb").as<int>() * (1<<20);
     num_chunks = load_or_abort(bulk_config, "num_chunks").as<int>();
-    warmup_iters = load_or_abort(bulk_config, "warmup_iters").as<int>();
 
     num_hosts = load_or_abort(bulk_config, "num_hosts").as<int>();
     num_states = load_or_abort(bulk_config, "num_states").as<int>();
@@ -95,8 +95,8 @@ static int setup_mappings() {
                                                                   my_rank,
                                                                   chunk_size_bytes,
                                                                   num_chunks);
-        struct fake_endhost_data* target_out = allocate_fake_data(target_rank,
-                                                                  my_rank,
+        struct fake_endhost_data* target_out = allocate_fake_data(my_rank,
+                                                                  target_rank,
                                                                   chunk_size_bytes,
                                                                   num_chunks);
         if(target_inc == NULL || target_out == NULL || fill_endhost_data(target_out) != 0) {
@@ -171,16 +171,26 @@ static int update_timeslot() {
                     (uint*)&current_ts_id, &ts_allocation))
             return 1;
 
-        current_ts = timeslots[current_ts_id];
-        if(!ts_to_target.count(current_ts_id)
-        || current_ts["affected_rotor"].as<uint>() != my_rotor
-        || current_ts["rotor_state"].as<int>() == 0)
+        current_ts = timeslots[current_ts_id].as<std::map<std::string, int>>();
+        if(!ts_to_target.count(current_ts_id))
             return 1;
+        if(current_ts["affected_rotor"] != my_rotor
+        || current_ts["rotor_state"] == 0) {
+            fprintf(stderr, "#%d: got erroneous timeslot ID %d, affected_rotor=%u, rotor_state=%d\n",
+                    my_rank, current_ts_id,
+                    current_ts["affected_rotor"],
+                    current_ts["rotor_state"]);
+            return 1;
+        }
 
         current_target = ts_to_target[current_ts_id];
 
         // ts_end = timeslot_received + (current_ts["byte_allocation_us"].as<uint64_t>() * 1000);
         // ts_fill = get_time_ns();
+
+        // printf("#%d: timeslot received. id=%d, affected_rotor=%d, rotor_state=%d, allocation=%lu, target=%d\n",
+        //        my_rank, current_ts_id, current_ts["affected_rotor"], current_ts["rotor_state"], ts_allocation, current_target);
+
         return 0;
     } else if(is_magic_pkt(ts_buffer, SYNC_PKT_SIZE, done_magic))
         return 2;
@@ -219,22 +229,24 @@ static void start_new_transfers() {
 
     if(!inc_in_progress) {
         inc_edata = inc_data_map[current_target];
-        if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes, warmup_iters) == 0){
+        if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes) == 0){
             inc_bytes = std::min((uint64_t)inc_bytes, ts_allocation);
             MPI_Irecv(inc_buffer, inc_bytes, MPI_CHAR, current_target,
                       MPI_ANY_TAG, data_comm, &inc_request);
             inc_in_progress = 1;
+            inc_target = current_target;
         }
     }
 
     if(!out_in_progress) {
         out_edata = out_data_map[current_target];
-        if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes, warmup_iters) == 0){
+        if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes) == 0){
             out_bytes = std::min((uint64_t)out_bytes, ts_allocation);
             bulk_started = get_time_ns();
             MPI_Isend(out_buffer, out_bytes, MPI_CHAR, current_target,
                       0, data_comm, &out_request);
             out_in_progress = 1;
+            out_target = current_target;
         }
     }
 }
@@ -244,7 +256,7 @@ static void check_transfer_states() {
         int inc_done = 0;
         MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
         if(inc_done) {
-            recv_done_endhost_data(inc_data_map[current_target], inc_bytes, warmup_iters);
+            recv_done_endhost_data(inc_data_map[inc_target], inc_bytes);
             inc_in_progress = 0;
         }
     }
@@ -255,7 +267,7 @@ static void check_transfer_states() {
         if(out_done){
             bulk_done = get_time_ns();
             bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
-            send_done_endhost_data(out_data_map[current_target], out_bytes, warmup_iters);
+            send_done_endhost_data(out_data_map[out_target], out_bytes);
             out_in_progress = 0;
         }
     }
@@ -279,16 +291,54 @@ static void check_transfer_states() {
 static void terminate_transfers_and_wait() {
     if(inc_in_progress) {
         MPI_Cancel(&inc_request);
+
         int inc_done = 0;
+        MPI_Status inc_status;
         while(!inc_done)
-            MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
+            MPI_Test(&inc_request, &inc_done, &inc_status);
+
+        int inc_cancelled = 0;
+        MPI_Test_cancelled(&inc_status, &inc_cancelled);
+        if(!inc_cancelled){
+            recv_done_endhost_data(inc_data_map[current_target], inc_bytes);
+        }
+
         inc_in_progress = 0;
     }
     if(out_in_progress) {
         MPI_Cancel(&out_request);
+
+        int out_done = 0;
+        MPI_Status out_status;
+        while(!out_done)
+            MPI_Test(&out_request, &out_done, &out_status);
+
+        int out_cancelled = 0;
+        MPI_Test_cancelled(&out_status, &out_cancelled);
+        if(!out_cancelled){
+            send_done_endhost_data(out_data_map[current_target], out_bytes);
+        }
+
+        out_in_progress = 0;
+    }
+}
+
+static void wait_for_transfers() {
+    if(inc_in_progress) {
+        int inc_done = 0;
+        while(!inc_done)
+            MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
+        recv_done_endhost_data(inc_data_map[current_target], inc_bytes);
+        inc_in_progress = 0;
+    }
+
+    if(out_in_progress) {
         int out_done = 0;
         while(!out_done)
             MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
+        bulk_done = get_time_ns();
+        bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
+        send_done_endhost_data(out_data_map[current_target], out_bytes);
         out_in_progress = 0;
     }
 }
@@ -360,6 +410,9 @@ int run_bulk_endhost() {
     setup_endhost_stats();
 
     warmup_connections();
+    warmup_connections();  // Eh, do it twice to make sure they're _really_ warm.
+
+    printf("my_rank=%d my_id=%d my_rotor=%d\tREADY\n", my_rank, my_id, my_rotor);
 
     MPI_Barrier(sync_comm);
 
@@ -370,7 +423,7 @@ int run_bulk_endhost() {
             switch(update_timeslot()) {
                 case 0:
                     record_stats_entry();
-                    terminate_transfers_and_wait();
+                    // terminate_transfers_and_wait();
                     start_new_transfers();
                     start_timeslot_recv();
                     break;

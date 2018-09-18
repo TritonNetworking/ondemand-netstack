@@ -25,7 +25,6 @@ int reset_endhost_data(struct fake_endhost_data* edata) {
     edata->read_offset = 0;
     edata->write_index = 0;
     edata->write_offset = 0;
-    edata->warmups_done = 0;
 
     for(int i = 0; i < edata->num_bufs; i++) {
         if(edata->data_arrs[i] == NULL)
@@ -50,7 +49,7 @@ int fill_endhost_data(struct fake_endhost_data* edata) {
     }
 
     edata->write_index = edata->num_bufs;
-    edata->write_offset = -1;
+    edata->write_offset = 0;
 
     return 0;
 }
@@ -94,23 +93,17 @@ fail_alloc:
 
 int send_next_endhost_data(struct fake_endhost_data* edata,
                            char **target_buf,
-                           int *max_bytes,
-                           int max_warmups) {
+                           int *max_bytes) {
     if(edata->read_index >= edata->num_bufs)
         return -1;
 
     *target_buf = &(edata->data_arrs[edata->read_index][edata->read_offset]);
-    if(edata->warmups_done < max_warmups){
-        *max_bytes = WARMUP_BYTES_SIZE;
-    } else {
-        *max_bytes = edata->buf_size - edata->read_offset;
-    }
+    *max_bytes = edata->buf_size - edata->read_offset;
     return 0;
 }
 
 int send_done_endhost_data(struct fake_endhost_data* edata,
-                           int bytes_done,
-                           int max_warmups) {
+                           int bytes_done) {
     if(edata->read_index >= edata->num_bufs)
         return -1;
 
@@ -125,31 +118,23 @@ int send_done_endhost_data(struct fake_endhost_data* edata,
             edata->read_offset = 0;
         }
     }
-    if(edata->warmups_done < max_warmups)
-        edata->warmups_done++;
 
     return 0;
 }
 
 int recv_next_endhost_data(struct fake_endhost_data* edata,
                            char **target_buf,
-                           int *max_bytes,
-                           int max_warmups) {
+                           int *max_bytes) {
     if(edata->write_index >= edata->num_bufs)
         return -1;
 
     *target_buf = &(edata->data_arrs[edata->write_index][edata->write_offset]);
-    if(edata->warmups_done < max_warmups){
-        *max_bytes = WARMUP_BYTES_SIZE;
-    } else {
-        *max_bytes = edata->buf_size - edata->write_offset;
-    }
+    *max_bytes = edata->buf_size - edata->write_offset;
     return 0;
 }
 
 int recv_done_endhost_data(struct fake_endhost_data* edata,
-                           int bytes_done,
-                           int max_warmups) {
+                           int bytes_done) {
     if(edata->write_index >= edata->num_bufs)
         return -1;
 
@@ -164,8 +149,6 @@ int recv_done_endhost_data(struct fake_endhost_data* edata,
             edata->write_offset = 0;
         }
     }
-    if(edata->warmups_done < max_warmups)
-        edata->warmups_done++;
 
     return 0;
 }
