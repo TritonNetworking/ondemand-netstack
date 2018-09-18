@@ -53,7 +53,7 @@ static int write_global_stats(int node_id, const char* filename) {
         return -1;
     }
 
-    fprintf(f, "stats\tnode_id: %d\n", node_id);
+    // fprintf(f, "stats\tnode_id: %d\n", node_id);
     for(int i = 2; i < global_stats_cnt; i++)
         fprintf(f, "%d ", ((int)(global_stats[i] - global_stats[i-1])) - 250000);
     fprintf(f, "\n");

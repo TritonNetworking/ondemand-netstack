@@ -135,14 +135,13 @@ int main(int argc, char** argv) {
     }
 
     MPI_Setup();
-    // printf("MPI Setup done\n");
 
     allocate_global_stats();
 
     int ret = run_designated_task();
 
     char stats_fname[128];
-    snprintf(stats_fname, 128, "/tmp/bulk_mpi_stats_rank_%d", world_rank);
+    snprintf(stats_fname, 128, "/tmp/bulk_mpi_stats_rank_%d.txt", world_rank);
     write_global_stats(world_rank, stats_fname);
     free_global_stats();
 

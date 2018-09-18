@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "yaml-cpp/yaml.h"
 #include "globals.h"
@@ -29,9 +30,9 @@ static YAML::Node timeslots, mappings;
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 static int dummy_host;
 
-static YAML::Node next_ts;
+static std::map<std::string, int> next_ts;
 static uint next_ts_id;
-static uint64_t slot_delay_ns, byte_allocation_ns, bytes_to_send;
+static uint64_t slot_delay_ns, byte_allocation_us, bytes_to_send;
 static int affected_rotor, rotor_state;
 
 static char send_dummy_buf[SYNC_PKT_SIZE];
@@ -83,21 +84,21 @@ static void init_control_timing() {
 
 static void load_next_timeslot() {
     next_ts_id = ts_order[ts_index];
-    next_ts = timeslots[next_ts_id];
+    next_ts = timeslots[next_ts_id].as<std::map<std::string, int>>();
     ts_index = (ts_index + 1) % num_ts;
 
-    slot_delay_ns = next_ts["slot_delay_us"].as<uint64_t>() * 1000ul;
-    byte_allocation_ns = (next_ts["byte_allocation_us"].as<uint64_t>() * 1000ul) - guard_time;
+    slot_delay_ns = (uint64_t)next_ts["slot_delay_us"] * 1000ul;
+    byte_allocation_us = (uint64_t)next_ts["byte_allocation_us"];
 
-    if(byte_allocation_ns)
-        bytes_to_send = get_bytes_for_time(byte_allocation_ns,
+    if(byte_allocation_us)
+        bytes_to_send = get_bytes_for_time((byte_allocation_us * 1000ul) - guard_time,
                                            link_rate_gbps,
                                            (uint)num_rotors - 1);
     else
         bytes_to_send = 0;
 
-    affected_rotor = next_ts["affected_rotor"].as<int>();
-    rotor_state = next_ts["affected_rotor"].as<int>();
+    affected_rotor = next_ts["affected_rotor"];
+    rotor_state = next_ts["rotor_state"];
 
     next_trigger_real += slot_delay_ns;
     // Recovery state. If we went too long, don't skip slots, since
