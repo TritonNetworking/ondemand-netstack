@@ -19,6 +19,9 @@ int run_as_dummy() {
     uint done_magic = load_or_abort(bulk_config, "done_magic").as<uint>();
 
     char dummy_buffer[SYNC_PKT_SIZE];
+
+    MPI_Barrier(sync_comm);
+
     while(true) {
         MPI_Request dummy_req;
         int dummy_recv_done = 0;

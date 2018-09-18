@@ -1,14 +1,14 @@
-chunk_size_mb: 200
-num_chunks: 10
+chunk_size_mb: 10
+num_chunks: 4
 warmup_iters: 10
 
-send_bulk_data: false
+send_bulk_data: true
 
 min_exp_delay_ns: 100000000
 recovery_delay_ns: 20000
 exp_duration_ms: 10000
 
-guard_time_ns: 10000
+guard_time_ns: 100000
 prealloc_delay_ns: 500
 link_rate_gbps: 10
 bytes_per_req: 32768
@@ -17,7 +17,8 @@ num_rotors: 4
 num_states: 2
 num_hosts: 8
 
-dummy_magic: 0x73796e63
+# dummy_magic: 0x73796e63
+dummy_magic: 0x73796e11
 endhost_magic: 0xbeefcafe
 done_magic: 0xdeadd00d
 

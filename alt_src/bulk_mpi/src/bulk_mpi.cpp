@@ -115,8 +115,8 @@ int run_designated_task() {
         run_as_dummy();
         // printf("world_rank=%d\tdummy\n", world_rank);
     } else {
-        uint id_val = this_id.as<uint>();
-        run_as_endhost(id_val);
+        // uint id_val = this_id.as<uint>();
+        run_as_endhost(world_rank);
         // printf("world_rank=%d\tid_val=%u\n", world_rank, id_val);
     }
 

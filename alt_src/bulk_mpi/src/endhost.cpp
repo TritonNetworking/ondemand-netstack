@@ -82,11 +82,14 @@ static int setup_mappings() {
     for(int i = 0; i < num_ts; i++) {
         int affected_rotor = timeslots[i]["affected_rotor"].as<int>();
         int rotor_state = timeslots[i]["rotor_state"].as<int>();
-        if(rotor_state == 0)
+        if(rotor_state == 0 || affected_rotor != my_rotor)
             continue;
 
         int target_id = mappings[affected_rotor][rotor_state][my_id].as<int>();
         int target_rank = id_to_rank[target_id][my_rotor].as<int>();
+
+        if(target_rank == my_rank)
+            continue;
 
         struct fake_endhost_data* target_inc = allocate_fake_data(target_rank,
                                                                   my_rank,
@@ -136,6 +139,32 @@ static void free_mappings() {
     }
 }
 
+static void warmup_connections() {
+    MPI_Request warmup_sends[num_targets];
+    MPI_Request warmup_recvs[num_targets];
+    char random_send[64];
+    char random_recv[num_targets][64];
+
+    int i = 0;
+    for(auto it = ts_to_target.begin(); it != ts_to_target.end(); it++){
+        MPI_Isend(&random_send[0], 64, MPI_CHAR, it->second,
+                  0, data_comm, &warmup_sends[i]);
+        MPI_Irecv(&random_recv[i][0], 64, MPI_CHAR, it->second,
+                  MPI_ANY_TAG, data_comm, &warmup_recvs[i]);
+        i++;
+    }
+
+    // printf("#%d: Waiting on %d bidir requests to ", my_rank, num_targets);
+    // for(auto it = ts_to_target.begin(); it != ts_to_target.end(); it++){
+    //     printf("%d, ", it->second);
+    // }
+    // printf("\n");
+    MPI_Waitall(num_targets, &warmup_sends[0], MPI_STATUSES_IGNORE);
+    // printf("#%d: Sends done.\n", my_rank);
+    MPI_Waitall(num_targets, &warmup_recvs[0], MPI_STATUSES_IGNORE);
+    // printf("#%d: Recvs done.\n", my_rank);
+}
+
 static int update_timeslot() {
     if(is_magic_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic)){
         if(read_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic,
@@ -143,7 +172,8 @@ static int update_timeslot() {
             return 1;
 
         current_ts = timeslots[current_ts_id];
-        if(current_ts["affected_rotor"].as<uint>() != my_rotor
+        if(!ts_to_target.count(current_ts_id)
+        || current_ts["affected_rotor"].as<uint>() != my_rotor
         || current_ts["rotor_state"].as<int>() == 0)
             return 1;
 
@@ -232,13 +262,33 @@ static void check_transfer_states() {
 
 }
 
-static void terminate_transfers() {
+// Don't use this. MPI_Request_free is _not_ safe and will cause segfaults.
+// static void terminate_transfers() {
+//     if(inc_in_progress) {
+//         MPI_Cancel(&inc_request);
+//         MPI_Request_free(&inc_request);
+//         inc_in_progress = 0;
+//     }
+//     if(out_in_progress) {
+//         MPI_Cancel(&out_request);
+//         MPI_Request_free(&out_request);
+//         out_in_progress = 0;
+//     }
+// }
+
+static void terminate_transfers_and_wait() {
     if(inc_in_progress) {
         MPI_Cancel(&inc_request);
+        int inc_done = 0;
+        while(!inc_done)
+            MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
         inc_in_progress = 0;
     }
     if(out_in_progress) {
         MPI_Cancel(&out_request);
+        int out_done = 0;
+        while(!out_done)
+            MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
         out_in_progress = 0;
     }
 }
@@ -306,8 +356,12 @@ int run_bulk_endhost() {
         fprintf(stderr, "Host %d: Failed to setup mappings\n", my_rank);
         return -1;
     }
+
     setup_endhost_stats();
 
+    warmup_connections();
+
+    MPI_Barrier(sync_comm);
 
     started_run = get_time_ns();
     start_timeslot_recv();
@@ -316,7 +370,7 @@ int run_bulk_endhost() {
             switch(update_timeslot()) {
                 case 0:
                     record_stats_entry();
-                    terminate_transfers();
+                    terminate_transfers_and_wait();
                     start_new_transfers();
                     start_timeslot_recv();
                     break;
@@ -333,9 +387,11 @@ int run_bulk_endhost() {
 
 endhost_done:
     ended_run = get_time_ns();
-    terminate_transfers();
+
     write_endhost_results();
     write_endhost_stats();
+
+    terminate_transfers_and_wait();
 
     free_mappings();
     free_endhost_stats();
@@ -344,7 +400,7 @@ endhost_done:
 }
 
 int run_as_endhost(uint rank_val) {
-    int send_bulk_data = load_or_abort(bulk_config, "send_bulk_data").as<int>();
+    bool send_bulk_data = load_or_abort(bulk_config, "send_bulk_data").as<bool>();
     my_rank = rank_val;
 
     if(send_bulk_data)

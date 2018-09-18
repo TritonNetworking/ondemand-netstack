@@ -69,7 +69,9 @@ static void setup_from_yaml() {
 
     exp_duration_ns = load_or_abort(bulk_config, "exp_duration_ms").as<uint64_t>() * 1000000ul;
     min_exp_delay = load_or_abort(bulk_config, "min_exp_delay_ns").as<uint64_t>();
+}
 
+static void init_control_timing() {
     now = get_time_ns();
     next_trigger_real = now;
     while(next_trigger_real < (now + min_exp_delay)) {
@@ -114,12 +116,12 @@ static void load_next_timeslot() {
 
     now = get_time_ns();
 
-    if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, dummy_magic, next_ts_id, byte_allocation_ns)){
+    if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, dummy_magic, next_ts_id, bytes_to_send)){
         fprintf(stderr, "Failed to make sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
-    if(make_pkt(send_hosts_buf, SYNC_PKT_SIZE, endhost_magic, next_ts_id, byte_allocation_ns)){
+    if(make_pkt(send_hosts_buf, SYNC_PKT_SIZE, endhost_magic, next_ts_id, bytes_to_send)){
         fprintf(stderr, "Failed to make sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
@@ -178,9 +180,14 @@ static void send_final_packets() {
 }
 
 int run_as_control() {
-    printf("Starting control host...\n");
+    printf("Setting up test...\n");
 
     setup_from_yaml();
+
+    MPI_Barrier(sync_comm);
+
+    printf("...completed. Running test...\n");
+    init_control_timing();
 
     while(next_trigger_real < exp_end_time) {
         load_next_timeslot();
