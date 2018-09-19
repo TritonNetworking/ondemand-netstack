@@ -24,13 +24,15 @@ static int num_hosts, num_states, num_rotors;
 
 static int num_ts, current_ts_id, current_target;
 static std::map<std::string, int> current_ts;
-static YAML::Node timeslots, mappings;
+static std::map<int, std::map<std::string, int>> timeslots;
+static std::map<int, std::map<int, std::vector<int>>> mappings;
 
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 
 static int chunk_size_bytes, num_chunks;
 static int targets_done, num_targets;
 static std::map<int, int> ts_to_target;
+static std::map<int, bool> target_recv_done, target_send_done;
 static std::map<int, struct fake_endhost_data*> inc_data_map, out_data_map;
 
 static uint64_t timeslot_received, ts_allocation, ts_end, ts_fill, ns_per_send;
@@ -46,9 +48,9 @@ struct delta_stats {
     uint64_t entries[NUM_STAT_ENTRIES];
     int cnt;
 };
-static struct delta_stats* bulk_stats;
-static uint64_t bulk_started, bulk_done;
-static uint out_cancelled, inc_cancelled;
+static struct delta_stats *bulk_stats, *flow_stats;
+static uint64_t bulk_started, bulk_done, flow_started, flow_done;
+static uint out_missed, inc_missed;
 
 static void setup_from_yaml() {
     link_rate_gbps = load_or_abort(bulk_config, "link_rate_gbps").as<uint>();
@@ -69,8 +71,8 @@ static void setup_from_yaml() {
 
     num_ts = (int)load_or_abort(bulk_config, "timeslot_order").as<std::vector<uint>>().size();
     current_ts_id = -1;
-    timeslots = load_or_abort(bulk_config, "timeslots");
-    mappings = load_or_abort(bulk_config, "mappings");
+    timeslots = load_or_abort(bulk_config, "timeslots").as<std::map<int, std::map<std::string, int>>>();
+    mappings = load_or_abort(bulk_config, "mappings").as<std::map<int, std::map<int, std::vector<int>>>>();
 
     my_id = rank_to_id[my_rank].as<int>();
     my_rotor = rank_to_rotor[my_rank].as<int>();
@@ -80,12 +82,12 @@ static void setup_from_yaml() {
 
 static int setup_mappings() {
     for(int i = 0; i < num_ts; i++) {
-        int affected_rotor = timeslots[i]["affected_rotor"].as<int>();
-        int rotor_state = timeslots[i]["rotor_state"].as<int>();
+        int affected_rotor = timeslots[i]["affected_rotor"];
+        int rotor_state = timeslots[i]["rotor_state"];
         if(rotor_state == 0 || affected_rotor != my_rotor)
             continue;
 
-        int target_id = mappings[affected_rotor][rotor_state][my_id].as<int>();
+        int target_id = mappings[affected_rotor][rotor_state][my_id];
         int target_rank = id_to_rank[target_id][my_rotor].as<int>();
 
         if(target_rank == my_rank)
@@ -106,6 +108,8 @@ static int setup_mappings() {
         }
 
         ts_to_target[i] = target_rank;
+        target_recv_done[target_rank] = false;
+        target_send_done[target_rank] = false;
         inc_data_map[target_rank] = target_inc;
         out_data_map[target_rank] = target_out;
     }
@@ -137,6 +141,11 @@ static void free_mappings() {
         free_endhost_data(target_inc);
         free_endhost_data(target_out);
     }
+}
+
+static void warmup_sync_connections() {
+    char fakebuf[64];
+    MPI_Recv(fakebuf, 64, MPI_CHAR, control_host, MPI_ANY_TAG, sync_comm, MPI_STATUS_IGNORE);
 }
 
 static void warmup_connections() {
@@ -171,7 +180,7 @@ static int update_timeslot() {
                     (uint*)&current_ts_id, &ts_allocation))
             return 1;
 
-        current_ts = timeslots[current_ts_id].as<std::map<std::string, int>>();
+        current_ts = timeslots[current_ts_id];
         if(!ts_to_target.count(current_ts_id))
             return 1;
         if(current_ts["affected_rotor"] != my_rotor
@@ -227,7 +236,7 @@ static void start_new_transfers() {
     struct fake_endhost_data* inc_edata;
     struct fake_endhost_data* out_edata;
 
-    if(!inc_in_progress) {
+    if(!inc_in_progress && !target_recv_done[current_target]) {
         inc_edata = inc_data_map[current_target];
         if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes) == 0){
             inc_bytes = std::min((uint64_t)inc_bytes, ts_allocation);
@@ -238,7 +247,7 @@ static void start_new_transfers() {
         }
     }
 
-    if(!out_in_progress) {
+    if(!out_in_progress && !target_send_done[current_target]) {
         out_edata = out_data_map[current_target];
         if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes) == 0){
             out_bytes = std::min((uint64_t)out_bytes, ts_allocation);
@@ -256,7 +265,15 @@ static void check_transfer_states() {
         int inc_done = 0;
         MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
         if(inc_done) {
-            recv_done_endhost_data(inc_data_map[inc_target], inc_bytes);
+            if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
+                target_recv_done[inc_target] = true;
+                if(target_send_done[inc_target] && target_recv_done[inc_target]){
+                    flow_done = get_time_ns();
+                    flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                    flow_started = get_time_ns();
+                    targets_done++;
+                }
+            }
             inc_in_progress = 0;
         }
     }
@@ -267,7 +284,15 @@ static void check_transfer_states() {
         if(out_done){
             bulk_done = get_time_ns();
             bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
-            send_done_endhost_data(out_data_map[out_target], out_bytes);
+            if(send_done_endhost_data(out_data_map[out_target], out_bytes) == 1){
+                target_send_done[out_target] = true;
+                if(target_send_done[out_target] && target_recv_done[out_target]){
+                    flow_done = get_time_ns();
+                    flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                    flow_started = get_time_ns();
+                    targets_done++;
+                }
+            }
             out_in_progress = 0;
         }
     }
@@ -299,8 +324,17 @@ static void terminate_transfers_and_wait() {
 
         int inc_cancelled = 0;
         MPI_Test_cancelled(&inc_status, &inc_cancelled);
+
         if(!inc_cancelled){
-            recv_done_endhost_data(inc_data_map[current_target], inc_bytes);
+            if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
+                target_recv_done[inc_target] = true;
+                if(target_send_done[inc_target] && target_recv_done[inc_target]){
+                    flow_done = get_time_ns();
+                    flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                    flow_started = get_time_ns();
+                    targets_done++;
+                }
+            }
         }
 
         inc_in_progress = 0;
@@ -315,8 +349,19 @@ static void terminate_transfers_and_wait() {
 
         int out_cancelled = 0;
         MPI_Test_cancelled(&out_status, &out_cancelled);
+
         if(!out_cancelled){
-            send_done_endhost_data(out_data_map[current_target], out_bytes);
+            bulk_done = get_time_ns();
+            bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
+            if(send_done_endhost_data(out_data_map[out_target], out_bytes) == 1){
+                target_send_done[out_target] = true;
+                if(target_send_done[out_target] && target_recv_done[out_target]){
+                    flow_done = get_time_ns();
+                    flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                    flow_started = get_time_ns();
+                    targets_done++;
+                }
+            }
         }
 
         out_in_progress = 0;
@@ -328,7 +373,17 @@ static void wait_for_transfers() {
         int inc_done = 0;
         while(!inc_done)
             MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
-        recv_done_endhost_data(inc_data_map[current_target], inc_bytes);
+
+        if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
+            target_recv_done[inc_target] = true;
+            if(target_send_done[inc_target] && target_recv_done[inc_target]){
+                flow_done = get_time_ns();
+                flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                flow_started = get_time_ns();
+                targets_done++;
+            }
+        }
+
         inc_in_progress = 0;
     }
 
@@ -338,7 +393,17 @@ static void wait_for_transfers() {
             MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
         bulk_done = get_time_ns();
         bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
-        send_done_endhost_data(out_data_map[current_target], out_bytes);
+
+        if(send_done_endhost_data(out_data_map[out_target], out_bytes) == 1){
+            target_send_done[out_target] = true;
+            if(target_send_done[out_target] && target_recv_done[out_target]){
+                flow_done = get_time_ns();
+                flow_stats->entries[flow_stats->cnt++] = flow_done - flow_started;
+                flow_started = get_time_ns();
+                targets_done++;
+            }
+        }
+
         out_in_progress = 0;
     }
 }
@@ -353,7 +418,7 @@ static void write_endhost_results() {
     }
 
     for(auto it = inc_data_map.begin(); it != inc_data_map.end(); it++) {
-        fprintf(resf, "RECV %d->%d:", my_rank, it->first);
+        fprintf(resf, "RECV %d->%d:", it->first, my_rank);
         struct fake_endhost_data *edata = it->second;
         for(int i = 0; i < edata->num_bufs; i++) {
             fprintf(resf, " %s", sha256(std::string(edata->data_arrs[i], edata->buf_size)).c_str());
@@ -382,22 +447,35 @@ static void write_endhost_stats() {
         return;
     }
 
-    for(int i = 2; i < bulk_stats->cnt; i++) {
+    fprintf(statsf, "SENDSTATS: ");
+    for(int i = 0; i < bulk_stats->cnt; i++) {
         fprintf(statsf, "%lu ", bulk_stats->entries[i]);
     }
     fprintf(statsf, "\n");
+
+    fprintf(statsf, "FLOWSTATS: ");
+    for(int i = 0; i < flow_stats->cnt; i++) {
+        fprintf(statsf, "%lu ", flow_stats->entries[i]);
+    }
+    fprintf(statsf, "\n");
+
+    fprintf(statsf, "RUNTIME: %lu\n", ended_run - started_run);
+
     fclose(statsf);
 }
 
 static void setup_endhost_stats() {
     bulk_stats = new delta_stats;
     bulk_stats->cnt = 0;
-    out_cancelled = 0;
-    inc_cancelled = 0;
+    flow_stats = new delta_stats;
+    flow_stats->cnt = 0;
+    out_missed = 0;
+    inc_missed = 0;
 }
 
 static void free_endhost_stats() {
     delete bulk_stats;
+    delete flow_stats;
 }
 
 int run_bulk_endhost() {
@@ -409,15 +487,18 @@ int run_bulk_endhost() {
 
     setup_endhost_stats();
 
+    warmup_sync_connections();
+
     warmup_connections();
     warmup_connections();  // Eh, do it twice to make sure they're _really_ warm.
 
     printf("my_rank=%d my_id=%d my_rotor=%d\tREADY\n", my_rank, my_id, my_rotor);
 
     MPI_Barrier(sync_comm);
-
     started_run = get_time_ns();
+
     start_timeslot_recv();
+    flow_started = get_time_ns();
     while (targets_done != num_targets) {
         if(check_for_timeslot()) {
             switch(update_timeslot()) {
@@ -440,6 +521,8 @@ int run_bulk_endhost() {
 
 endhost_done:
     ended_run = get_time_ns();
+
+    printf("my_rank=%d\tCOMPLETED in %lu ns\n", my_rank, ended_run - started_run);
 
     write_endhost_results();
     write_endhost_stats();
