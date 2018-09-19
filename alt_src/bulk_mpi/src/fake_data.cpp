@@ -119,7 +119,10 @@ int send_done_endhost_data(struct fake_endhost_data* edata,
         }
     }
 
-    return 0;
+    if(edata->read_index >= edata->num_bufs)
+        return 1;
+    else
+        return 0;
 }
 
 int recv_next_endhost_data(struct fake_endhost_data* edata,
@@ -150,5 +153,8 @@ int recv_done_endhost_data(struct fake_endhost_data* edata,
         }
     }
 
-    return 0;
+    if(edata->write_index >= edata->num_bufs)
+        return 1;
+    else
+        return 0;
 }

@@ -25,7 +25,9 @@ static int num_hosts, num_rotors;
 static int ts_index, num_ts;
 static std::vector<uint> ts_order;
 static std::vector<int> next_targets;
-static YAML::Node timeslots, mappings;
+// static YAML::Node timeslots, mappings;
+static std::map<int, std::map<std::string, int>> timeslots;
+static std::map<int, std::map<int, std::vector<int>>> mappings;
 
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 static int dummy_host;
@@ -65,8 +67,8 @@ static void setup_from_yaml() {
     ts_order = load_or_abort(bulk_config, "timeslot_order").as<std::vector<uint>>();
     num_ts = (int)ts_order.size();
     ts_index = 0;
-    timeslots = load_or_abort(bulk_config, "timeslots");
-    mappings = load_or_abort(bulk_config, "mappings");
+    timeslots = load_or_abort(bulk_config, "timeslots").as<std::map<int, std::map<std::string, int>>>();
+    mappings = load_or_abort(bulk_config, "mappings").as<std::map<int, std::map<int, std::vector<int>>>>();
 
     exp_duration_ns = load_or_abort(bulk_config, "exp_duration_ms").as<uint64_t>() * 1000000ul;
     min_exp_delay = load_or_abort(bulk_config, "min_exp_delay_ns").as<uint64_t>();
@@ -82,9 +84,20 @@ static void init_control_timing() {
     exp_end_time = now + exp_duration_ns;
 }
 
+static void warmup_sync_connections() {
+    char fakebuf[64];
+    for(int i = 0; i < num_hosts; i++) {
+        std::vector<int> ranks = id_to_rank[i].as<std::vector<int>>();
+        for(int j = 0; j < ranks.size(); j++) {
+            MPI_Send(fakebuf, 64, MPI_CHAR, ranks[j], 0, sync_comm);
+        }
+    }
+}
+
 static void load_next_timeslot() {
     next_ts_id = ts_order[ts_index];
-    next_ts = timeslots[next_ts_id].as<std::map<std::string, int>>();
+    // next_ts = timeslots[next_ts_id].as<std::map<std::string, int>>();
+    next_ts = timeslots[next_ts_id];
     ts_index = (ts_index + 1) % num_ts;
 
     slot_delay_ns = (uint64_t)next_ts["slot_delay_us"] * 1000ul;
@@ -100,7 +113,8 @@ static void load_next_timeslot() {
     affected_rotor = next_ts["affected_rotor"];
     rotor_state = next_ts["rotor_state"];
 
-    next_trigger_real += slot_delay_ns;
+    next_trigger_real = now + slot_delay_ns;
+    // next_trigger_real += slot_delay_ns;
     // Recovery state. If we went too long, don't skip slots, since
     // that will skip actual timeslots at the switch and possibly drop
     // low-latency traffic.
@@ -184,6 +198,8 @@ int run_as_control() {
     printf("Setting up test...\n");
 
     setup_from_yaml();
+
+    warmup_sync_connections();
 
     MPI_Barrier(sync_comm);
 
