@@ -1,6 +1,8 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
+sudo /root/set_state
+
 taskset --cpu-list 11,51,13,53,15,55,17,57,19,59,21,61 \
 /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpirun \
     -np 34 --hostfile config/real_hfile --rankfile config/real_rfile --report-bindings \
