@@ -6,6 +6,10 @@ import subprocess
 import sys
 import time
 
+import numpy as np
+import misc_python
+
+
 HOSTS={
     'b09-30': {
         'ranks': [0, 8, 16, 24],
@@ -69,6 +73,18 @@ def parse_args():
 
     parser.add_argument("-t", "--temp_dir", default="/tmp/mpi_bulk_stats", type=str,
                         help="Directory to locally store results before processing them")
+    parser.add_argument("-d", "--endhosts_graph", default=None, type=str,
+                        help="Output a graph of the send deltas at endhosts")
+    parser.add_argument("-c", "--control_graph", default=None, type=str,
+                        help="Output a graph of the send deltas at control & dummy")
+    parser.add_argument("-s", "--sends_graph", default=None, type=str,
+                        help="Plot a graph of send data for each endhost")
+    parser.add_argument("-f", "--flows_graph", default=None, type=str,
+                        help="Output a graph of FCTs for bulk traffic")
+    parser.add_argument("-r", "--runtime_data", default=False, action="store_true",
+                        help="Print stats on the runtime completion of each endhost")
+    parser.add_argument("--skip_copy", default=False, action="store_true",
+                        help="Skip copying files from remote hosts and use local copies")
 
     return parser.parse_args()
 
@@ -86,7 +102,7 @@ def copy_from_remote(remote_host, remote_file, local_dest):
     COPY_PROCS.append(proc)
 
 
-def copy_run_files(dest_dir):
+def copy_run_files(dest_dir, skip_copy=False):
     stats_files = []
     endhost_files = []
     results_files = []
@@ -94,22 +110,27 @@ def copy_run_files(dest_dir):
         for rank in HOSTS[host]["ranks"]:
             rname = DEFAULT_STATS_STR % rank
             lname = os.path.join(dest_dir, os.path.basename(rname))
-            copy_from_remote(host, rname, lname)
+            if not skip_copy:
+                copy_from_remote(host, rname, lname)
             stats_files.append((rank, lname))
 
             if HOSTS[host]["role"] == "endhost":
                 rname = DEFAULT_ENDHOST_STR % rank
                 lname = os.path.join(dest_dir, os.path.basename(rname))
-                copy_from_remote(host, rname, lname)
+                if not skip_copy:
+                    copy_from_remote(host, rname, lname)
                 endhost_files.append((rank, lname))
 
                 rname = DEFAULT_RESULTS_STR % rank
                 lname = os.path.join(dest_dir, os.path.basename(rname))
-                copy_from_remote(host, rname, lname)
+                if not skip_copy:
+                    copy_from_remote(host, rname, lname)
                 results_files.append((rank, lname))
-            time.sleep(0.1)
+            if not skip_copy:
+                time.sleep(0.1)
 
-    wait_on_copies()
+    if not skip_copy:
+        wait_on_copies()
 
     return (stats_files, endhost_files, results_files)
 
@@ -145,6 +166,54 @@ def load_sha_hashes(results_files):
     return (send_map, recv_map)
 
 
+def load_bulk_stats(stats_files):
+    ts_deltas = {}
+    for rank, sfname in stats_files:
+        with open(sfname, "r") as f:
+            vals = f.read().strip().split()
+            ts_deltas[rank] = [int(v) for v in vals]
+    return ts_deltas
+
+
+def load_endhost_stats(endhost_files):
+    send_deltas = {}
+    flow_deltas = {}
+    runtimes = {}
+    for rank, efname in endhost_files:
+        with open(efname, "r") as f:
+            for line in f:
+                if line.startswith("SENDSTATS"):
+                    send_deltas[rank] = [int(v) for v in
+                                         line.split(":")[1].strip().split()]
+                elif line.startswith("FLOWSTATS"):
+                    flow_deltas[rank] = [int(v) for v in
+                                         line.split(":")[1].strip().split()]
+                elif line.startswith("RUNTIME"):
+                    runtimes[rank] = int(line.split(":")[1].strip())
+                else:
+                    continue
+    return (send_deltas, flow_deltas, runtimes)
+
+
+def plot_deltas_graph(ts_deltas, out_fname):
+    exps = {str(r): {"data": ts_deltas[r]}
+            for r in ts_deltas}
+    misc_python.plot_cdf_set_all(exps, out_fname,
+                                 title="Deltas graph",
+                                 xlabel="Nanoseconds",
+                                 ylabel="CDF",
+                                 ylim=(0,1.0),
+                                 legend_title="MPI Rank")
+
+
+def print_runtime_info(runtimes):
+    print("Runtime stats:")
+    runtime_data = [runtimes[r] for r in runtimes]
+    print("Mean: %.2f\tMedian: %.2f\tMin: %d\tMax:%d" % (
+          np.mean(runtime_data), np.median(runtime_data),
+          min(runtime_data), max(runtime_data)))
+
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -152,10 +221,42 @@ if __name__ == "__main__":
         os.mkdir(args.temp_dir)
 
     print("Copying stats files...")
-    stats_files, endhost_files, results_files = copy_run_files(args.temp_dir)
+    stats_files, endhost_files, results_files = copy_run_files(args.temp_dir, args.skip_copy)
+
     print("Loading SHA256 hashes...")
     send_map, recv_map = load_sha_hashes(results_files)
     print("Verifying hashes...")
     verify_sha_hashes(send_map, recv_map)
     verify_sha_hashes(recv_map, send_map)
+
+    control_ranks = [r for host in HOSTS for r in HOSTS[host]["ranks"]
+                     if HOSTS[host]["role"] == "control" or HOSTS[host]["role"] == "dummy"]
+    endhost_ranks = [r for host in HOSTS for r in HOSTS[host]["ranks"]
+                     if HOSTS[host]["role"] == "endhost"]
+
+    if args.control_graph or args.endhosts_graph:
+        print("Loading bulk stats...")
+        ts_deltas = load_bulk_stats(stats_files)
+        if args.control_graph:
+            print("Writing control graph to %s..." % args.control_graph)
+            plot_deltas_graph({r: ts_deltas[r] for r in ts_deltas if r in control_ranks},
+                              args.control_graph)
+        if args.endhosts_graph:
+            print("Writing deltas graph to %s..." % args.endhosts_graph)
+            plot_deltas_graph({r: ts_deltas[r] for r in ts_deltas if r in endhost_ranks},
+                              args.endhosts_graph)
+
+    if args.flows_graph or args.sends_graph or args.runtime_data:
+        print("Loading endhost stats...")
+        send_deltas, flow_deltas, runtimes = load_endhost_stats(endhost_files)
+        if args.flows_graph:
+            print("Writing flow graph to %s..." % args.flows_graph)
+            plot_deltas_graph(flow_deltas, args.flows_graph)
+        if args.sends_graph:
+            print("Writing sends graph to %s..." % args.sends_graph)
+            plot_deltas_graph(send_deltas, args.sends_graph)
+        if args.runtime_data:
+            print_runtime_info(runtimes)
+        import pdb; pdb.set_trace()
+
     print("Done!")

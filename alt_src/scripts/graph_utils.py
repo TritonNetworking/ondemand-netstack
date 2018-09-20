@@ -158,7 +158,7 @@ def plot_results(results, out_fname, title="Graph title",
     # sort both labels and handles by labels
     # labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: int(t[0])))
     if legend_title:
-        lgd = plt.legend(handles, labels, bbox_to_anchor=(0.5, -0.125), loc='upper center', borderaxespad=0.5, ncol=num_labels,
+        lgd = plt.legend(handles, labels, bbox_to_anchor=(0.5, -0.125), loc='upper center', borderaxespad=0.5, ncol=8,
                          title=legend_title)
         plt.savefig(out_fname, bbox_extra_artists=(lgd,), bbox_inches='tight')
     else:

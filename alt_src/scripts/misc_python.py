@@ -1,5 +1,5 @@
 import numpy as np
-from . import graph_utils
+import graph_utils
 
 def read_data_file(filename):
     with open(filename, "r") as f:
@@ -32,12 +32,16 @@ def plot_cdf_set_all(exps,
                      title="Graph title",
                      xlabel="X Label", ylabel="Y Label",
                      xlim=None, ylim=None,
+                     legend_title="Config",
                      cmap_n="tab10"):
     cdfs = {}
     for expname in exps:
         exp = exps[expname]
-        fname = exp["filename"]
-        vals = read_data_file(fname)
+        if "filename" in exp:
+            fname = exp["filename"]
+            vals = read_data_file(fname)
+        if "data" in exp:
+            vals = exp["data"]
 
         ex, ey = graph_utils.get_cdf(vals)
         cdfs[expname] = {"label": expname,
@@ -52,7 +56,7 @@ def plot_cdf_set_all(exps,
                              cmap_n=cmap_n,
                              markers=None,
                              markersize=0.0,
-                             legend_title="Config",
+                             legend_title=legend_title,
                              drawstyle='steps-post')
 
 import yaml

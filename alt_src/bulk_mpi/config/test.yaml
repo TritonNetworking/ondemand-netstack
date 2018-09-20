@@ -1,6 +1,6 @@
 test_value: "Somewhere, there is a finish line"
 
-chunk_size_mb: 200
+chunk_size_kb: 200
 num_chunks: 10
 warmup_iters: 10
 

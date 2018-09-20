@@ -21,6 +21,7 @@ static uint64_t min_exp_delay, recovery_delay, exp_duration_ns, exp_end_time;
 static uint link_rate_gbps;
 static uint dummy_magic, endhost_magic, done_magic;
 static int num_hosts, num_rotors;
+static int warmup_iters;
 
 static int ts_index, num_ts;
 static std::vector<uint> ts_order;
@@ -50,6 +51,7 @@ static void setup_from_yaml() {
     guard_time = load_or_abort(bulk_config, "guard_time_ns").as<uint64_t>();
     recovery_delay = load_or_abort(bulk_config, "recovery_delay_ns").as<uint64_t>();
     prealloc_delay = load_or_abort(bulk_config, "prealloc_delay_ns").as<uint64_t>();
+    warmup_iters = load_or_abort(bulk_config, "warmup_iters").as<int>();
 
     dummy_magic = load_or_abort(bulk_config, "dummy_magic").as<uint>();
     endhost_magic = load_or_abort(bulk_config, "endhost_magic").as<uint>();
@@ -76,12 +78,20 @@ static void setup_from_yaml() {
 
 static void init_control_timing() {
     now = get_time_ns();
-    next_trigger_real = now;
-    while(next_trigger_real < (now + min_exp_delay)) {
-        now = get_time_ns();
-        next_trigger_real += period_ns;
-    }
+    // next_trigger_real = now;
+    // while(next_trigger_real < (now + min_exp_delay)) {
+    //     now = get_time_ns();
+    //     next_trigger_real += period_ns;
+    // }
+    next_trigger_real = now + min_exp_delay + period_ns;
+    next_trigger_virt = next_trigger_real - prealloc_delay;
     exp_end_time = now + exp_duration_ns;
+}
+
+static void warmup_dummy_connection() {
+    char warmup_buf[128];
+    MPI_Send(warmup_buf, 128, MPI_CHAR, dummy_host,
+             0, sync_comm);
 }
 
 static void warmup_sync_connections() {
@@ -113,15 +123,18 @@ static void load_next_timeslot() {
     affected_rotor = next_ts["affected_rotor"];
     rotor_state = next_ts["rotor_state"];
 
-    next_trigger_real = now + slot_delay_ns;
+    now = get_time_ns();
+    next_trigger_virt = now + slot_delay_ns;
+    next_trigger_real = next_trigger_virt + prealloc_delay;
+    // next_trigger_real = now + slot_delay_ns;
     // next_trigger_real += slot_delay_ns;
     // Recovery state. If we went too long, don't skip slots, since
     // that will skip actual timeslots at the switch and possibly drop
     // low-latency traffic.
-    if(next_trigger_real < now){
-        next_trigger_real = now + recovery_delay + prealloc_delay;
-    }
-    next_trigger_virt = next_trigger_real - prealloc_delay;
+    // if(next_trigger_real < now){
+    //     next_trigger_real = now + recovery_delay + prealloc_delay;
+    // }
+    // next_trigger_virt = next_trigger_real - prealloc_delay;
 
     next_targets.clear();
     for(int i = 0; i < num_hosts; i++){
@@ -140,6 +153,8 @@ static void load_next_timeslot() {
         fprintf(stderr, "Failed to make sync packet at control host\n");
         MPI_Abort(MPI_COMM_WORLD, -1);
     }
+
+    // printf("%lu: Made sync packets with next_ts_id=%d bytes_to_send=%lu\n", now, next_ts_id, bytes_to_send);
 }
 
 static void send_sync_packets() {
@@ -148,8 +163,18 @@ static void send_sync_packets() {
     MPI_Isend(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
                0, sync_comm, &to_dummy);
 
+    while(!to_dummy_completed)
+        MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
+
+    // now = get_time_ns();
+    // printf("%lu: Completed sending sync packet to dummy host\n", now);
+
+    wait_until(next_trigger_real);
+
     // A new rotor came up, along with a new one going down
+    // printf("%lu: Trigger real reached\n", now);
     if (rotor_state != 0) {
+        // printf("Sending sync packet to ranks ");
         MPI_Request to_endhosts[num_hosts];
         int to_endhosts_completed[num_hosts];
         int endhosts_done = 0;
@@ -158,7 +183,9 @@ static void send_sync_packets() {
             int target = next_targets[i];
             MPI_Isend(send_hosts_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
                       0, sync_comm, &to_endhosts[i]);
+            // printf("%d ", target);
         }
+        // printf("\n");
 
         while(!endhosts_done) {
             endhosts_done = 1;
@@ -171,10 +198,12 @@ static void send_sync_packets() {
                 }
             }
         }
+
+        // now = get_time_ns();
+        // printf("%lu: Sending completed.\n", get_time_ns());
     }
 
-    while(!to_dummy_completed)
-        MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
+    // wait_until(now + 1000000000);
 }
 
 static void send_final_packets() {
@@ -199,15 +228,22 @@ int run_as_control() {
 
     setup_from_yaml();
 
-    warmup_sync_connections();
+    printf("Warming up...\n");
+    for(int i = 0; i < warmup_iters; i++){
+        warmup_dummy_connection();
+        warmup_sync_connections();
+    }
+
+    printf("Generating fake data...\n");
 
     MPI_Barrier(sync_comm);
 
     printf("...completed. Running test...\n");
+
+    load_next_timeslot();
     init_control_timing();
 
     while(next_trigger_real < exp_end_time) {
-        load_next_timeslot();
         // printf("Loaded ts\n");
         wait_until(next_trigger_virt);
         // printf("Wait done\n");
@@ -215,6 +251,7 @@ int run_as_control() {
         // printf("Sent sync\n");
         record_stats_entry();
         now = get_time_ns();
+        load_next_timeslot();
         // printf("loop done\n");
     }
 

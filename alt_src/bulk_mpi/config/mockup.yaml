@@ -1,5 +1,5 @@
-# The size of the chunks that endhosts will send, in MB.
-chunk_size_mb: 200
+# The size of the chunks that endhosts will send, in KB.
+chunk_size_kb: 200
 # The number of the chunks that the endhosts will send.
 # Once all tasks are done, the program will exit.
 num_chunks: 10
@@ -52,8 +52,11 @@ num_states: 2
 # The number of endhosts in the system.
 num_hosts: 4
 
-# Magic value sent with all control packets.
-magic: 0xdeed
+# Magic value sent with all control packets to the dummy host.
+dummy_magic: 0xdeed
+
+# Magic value sent with all control packets to endhosts.
+endhost_magic: 0xdead
 
 # Magic value used to shut down endhosts.
 done_magic: 0xd00d

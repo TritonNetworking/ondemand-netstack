@@ -1,15 +1,15 @@
-chunk_size_mb: 10
-num_chunks: 4
-warmup_iters: 10
+chunk_size_kb: 10000
+num_chunks: 20
+warmup_iters: 50
 
 send_bulk_data: true
 
 min_exp_delay_ns: 100000000
 recovery_delay_ns: 100000
-exp_duration_ms: 10000
+exp_duration_ms: 7000
 
-guard_time_ns: 100000
-prealloc_delay_ns: 500
+guard_time_ns: 200000
+prealloc_delay_ns: 1000
 link_rate_gbps: 10
 bytes_per_req: 32768
 
@@ -17,8 +17,8 @@ num_rotors: 4
 num_states: 2
 num_hosts: 8
 
-# dummy_magic: 0x73796e63
-dummy_magic: 0x73796e11
+dummy_magic: 0x73796e63
+# dummy_magic: 0x73796e11
 endhost_magic: 0xbeefcafe
 done_magic: 0xdeadd00d
 
@@ -110,87 +110,89 @@ timeslots:
   0:
     affected_rotor: 0
     rotor_state: 1
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   1:
     affected_rotor: 1
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   2:
     affected_rotor: 1
     rotor_state: 1
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   3:
     affected_rotor: 2
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   4:
     affected_rotor: 2
     rotor_state: 1
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   5:
     affected_rotor: 3
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   6:
     affected_rotor: 3
     rotor_state: 1
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   7:
     affected_rotor: 0
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   8:
     affected_rotor: 0
     rotor_state: 2
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   9:
     affected_rotor: 1
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   10:
     affected_rotor: 1
     rotor_state: 2
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   11:
     affected_rotor: 2
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   12:
     affected_rotor: 2
     rotor_state: 2
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   13:
     affected_rotor: 3
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
   14:
     affected_rotor: 3
     rotor_state: 2
-    slot_delay_us: 250
-    byte_allocation_us: 1500
+    slot_delay_us: 500
+    byte_allocation_us: 3000
   15:
-    affected_rotor: 1
+    affected_rotor: 0
     rotor_state: 0
-    slot_delay_us: 250
+    slot_delay_us: 500
     byte_allocation_us: 0
 
 timeslot_order: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+# timeslot_order: [8,9,10,11,12,13]
+# timeslot_order: [0]
 
-total_period_ns: 4000000
+total_period_ns: 8000000
 
 mappings:
   0:

@@ -21,11 +21,13 @@ static int control_host;
 static uint link_rate_gbps, bytes_per_req;
 static uint endhost_magic, done_magic;
 static int num_hosts, num_states, num_rotors;
+static int warmup_iters;
 
 static int num_ts, current_ts_id, current_target;
 static std::map<std::string, int> current_ts;
 static std::map<int, std::map<std::string, int>> timeslots;
 static std::map<int, std::map<int, std::vector<int>>> mappings;
+static std::vector<uint> timeslot_order;
 
 static YAML::Node id_to_rank, rank_to_id, rank_to_rotor;
 
@@ -50,13 +52,14 @@ struct delta_stats {
 };
 static struct delta_stats *bulk_stats, *flow_stats;
 static uint64_t bulk_started, bulk_done, flow_started, flow_done;
-static uint out_missed, inc_missed;
+static int out_missed, inc_missed;
 
 static void setup_from_yaml() {
     link_rate_gbps = load_or_abort(bulk_config, "link_rate_gbps").as<uint>();
     bytes_per_req = load_or_abort(bulk_config, "bytes_per_req").as<uint>();
-    chunk_size_bytes = load_or_abort(bulk_config, "chunk_size_mb").as<int>() * (1<<20);
+    chunk_size_bytes = load_or_abort(bulk_config, "chunk_size_kb").as<int>() * (1<<10);
     num_chunks = load_or_abort(bulk_config, "num_chunks").as<int>();
+    warmup_iters = load_or_abort(bulk_config, "warmup_iters").as<int>();
 
     num_hosts = load_or_abort(bulk_config, "num_hosts").as<int>();
     num_states = load_or_abort(bulk_config, "num_states").as<int>();
@@ -69,7 +72,8 @@ static void setup_from_yaml() {
     endhost_magic = load_or_abort(bulk_config, "endhost_magic").as<uint>();
     done_magic = load_or_abort(bulk_config, "done_magic").as<uint>();
 
-    num_ts = (int)load_or_abort(bulk_config, "timeslot_order").as<std::vector<uint>>().size();
+    timeslot_order = load_or_abort(bulk_config, "timeslot_order").as<std::vector<uint>>();
+    num_ts = (int)timeslot_order.size();
     current_ts_id = -1;
     timeslots = load_or_abort(bulk_config, "timeslots").as<std::map<int, std::map<std::string, int>>>();
     mappings = load_or_abort(bulk_config, "mappings").as<std::map<int, std::map<int, std::vector<int>>>>();
@@ -82,8 +86,9 @@ static void setup_from_yaml() {
 
 static int setup_mappings() {
     for(int i = 0; i < num_ts; i++) {
-        int affected_rotor = timeslots[i]["affected_rotor"];
-        int rotor_state = timeslots[i]["rotor_state"];
+        int next_ts_id = timeslot_order[i];
+        int affected_rotor = timeslots[next_ts_id]["affected_rotor"];
+        int rotor_state = timeslots[next_ts_id]["rotor_state"];
         if(rotor_state == 0 || affected_rotor != my_rotor)
             continue;
 
@@ -107,7 +112,7 @@ static int setup_mappings() {
             goto setup_mappings_fail;
         }
 
-        ts_to_target[i] = target_rank;
+        ts_to_target[next_ts_id] = target_rank;
         target_recv_done[target_rank] = false;
         target_send_done[target_rank] = false;
         inc_data_map[target_rank] = target_inc;
@@ -148,17 +153,17 @@ static void warmup_sync_connections() {
     MPI_Recv(fakebuf, 64, MPI_CHAR, control_host, MPI_ANY_TAG, sync_comm, MPI_STATUS_IGNORE);
 }
 
-static void warmup_connections() {
+static void warmup_data_connections() {
     MPI_Request warmup_sends[num_targets];
     MPI_Request warmup_recvs[num_targets];
-    char random_send[64];
-    char random_recv[num_targets][64];
+    char random_send[1024];
+    char random_recv[num_targets][1024];
 
     int i = 0;
     for(auto it = ts_to_target.begin(); it != ts_to_target.end(); it++){
-        MPI_Isend(&random_send[0], 64, MPI_CHAR, it->second,
+        MPI_Isend(&random_send[0], 1024, MPI_CHAR, it->second,
                   0, data_comm, &warmup_sends[i]);
-        MPI_Irecv(&random_recv[i][0], 64, MPI_CHAR, it->second,
+        MPI_Irecv(&random_recv[i][0], 1024, MPI_CHAR, it->second,
                   MPI_ANY_TAG, data_comm, &warmup_recvs[i]);
         i++;
     }
@@ -177,12 +182,12 @@ static void warmup_connections() {
 static int update_timeslot() {
     if(is_magic_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic)){
         if(read_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic,
-                    (uint*)&current_ts_id, &ts_allocation))
+                    (uint*)&current_ts_id, &ts_allocation)){
+            fprintf(stderr, "#%d: got packet from control host that wasn't a control packet\n");
             return 1;
+        }
 
         current_ts = timeslots[current_ts_id];
-        if(!ts_to_target.count(current_ts_id))
-            return 1;
         if(current_ts["affected_rotor"] != my_rotor
         || current_ts["rotor_state"] == 0) {
             fprintf(stderr, "#%d: got erroneous timeslot ID %d, affected_rotor=%u, rotor_state=%d\n",
@@ -191,6 +196,8 @@ static int update_timeslot() {
                     current_ts["rotor_state"]);
             return 1;
         }
+        if(!ts_to_target.count(current_ts_id))
+            return 1;
 
         current_target = ts_to_target[current_ts_id];
 
@@ -236,6 +243,8 @@ static void start_new_transfers() {
     struct fake_endhost_data* inc_edata;
     struct fake_endhost_data* out_edata;
 
+    if(inc_in_progress && !target_recv_done[current_target])
+        inc_missed++;
     if(!inc_in_progress && !target_recv_done[current_target]) {
         inc_edata = inc_data_map[current_target];
         if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes) == 0){
@@ -247,6 +256,8 @@ static void start_new_transfers() {
         }
     }
 
+    if(out_in_progress && !target_send_done[current_target])
+        out_missed++;
     if(!out_in_progress && !target_send_done[current_target]) {
         out_edata = out_data_map[current_target];
         if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes) == 0){
@@ -487,10 +498,10 @@ int run_bulk_endhost() {
 
     setup_endhost_stats();
 
-    warmup_sync_connections();
-
-    warmup_connections();
-    warmup_connections();  // Eh, do it twice to make sure they're _really_ warm.
+    for(int i = 0; i < warmup_iters; i++){
+        warmup_sync_connections();
+        warmup_data_connections();
+    }
 
     printf("my_rank=%d my_id=%d my_rotor=%d\tREADY\n", my_rank, my_id, my_rotor);
 
@@ -505,6 +516,8 @@ int run_bulk_endhost() {
                 case 0:
                     record_stats_entry();
                     // terminate_transfers_and_wait();
+                    // if(my_rotor != 0)
+                    //     break;
                     start_new_transfers();
                     start_timeslot_recv();
                     break;
@@ -522,7 +535,15 @@ int run_bulk_endhost() {
 endhost_done:
     ended_run = get_time_ns();
 
-    printf("my_rank=%d\tCOMPLETED in %lu ns\n", my_rank, ended_run - started_run);
+    if(targets_done == num_targets){
+        printf("my_rank=%d\tCOMPLETED in %lu ns\tinc_missed=%d out_missed=%d\n",
+               my_rank, ended_run - started_run,
+               inc_missed, out_missed);
+    } else {
+       printf("my_rank=%d\tFAILED after %lu ns\tinc_missed=%d out_missed=%d completed=%d\n",
+               my_rank, ended_run - started_run,
+               inc_missed, out_missed, targets_done);
+    }
 
     write_endhost_results();
     write_endhost_stats();
