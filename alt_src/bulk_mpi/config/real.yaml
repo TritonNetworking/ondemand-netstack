@@ -1,14 +1,14 @@
-chunk_size_kb: 10000
-num_chunks: 20
-warmup_iters: 50
+chunk_size_kb: 100
+num_chunks: 2000
+warmup_iters: 100
 
 send_bulk_data: true
 
 min_exp_delay_ns: 100000000
 recovery_delay_ns: 100000
-exp_duration_ms: 7000
+exp_duration_ms: 8000
 
-guard_time_ns: 200000
+guard_time_ns: 1400000
 prealloc_delay_ns: 1000
 link_rate_gbps: 10
 bytes_per_req: 32768

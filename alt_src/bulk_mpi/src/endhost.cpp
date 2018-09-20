@@ -38,6 +38,7 @@ static std::map<int, bool> target_recv_done, target_send_done;
 static std::map<int, struct fake_endhost_data*> inc_data_map, out_data_map;
 
 static uint64_t timeslot_received, ts_allocation, ts_end, ts_fill, ns_per_send;
+// static uint64_t ts_send_allocation, ts_recv_allocation;
 static MPI_Request ts_request, inc_request, out_request;
 static int out_target, inc_target;
 static int out_bytes, inc_bytes;
@@ -183,7 +184,7 @@ static int update_timeslot() {
     if(is_magic_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic)){
         if(read_pkt(ts_buffer, SYNC_PKT_SIZE, endhost_magic,
                     (uint*)&current_ts_id, &ts_allocation)){
-            fprintf(stderr, "#%d: got packet from control host that wasn't a control packet\n");
+            fprintf(stderr, "#%d: got packet from control host that wasn't a control packet\n", my_rank);
             return 1;
         }
 
@@ -200,6 +201,9 @@ static int update_timeslot() {
             return 1;
 
         current_target = ts_to_target[current_ts_id];
+
+        // ts_send_allocation = ts_allocation;
+        // ts_recv_allocation = ts_allocation;
 
         // ts_end = timeslot_received + (current_ts["byte_allocation_us"].as<uint64_t>() * 1000);
         // ts_fill = get_time_ns();
@@ -238,12 +242,12 @@ static int check_for_timeslot() {
         return 0;
 }
 
-static void start_new_transfers() {
+static void start_new_transfers(int new_timeslot) {
     char *out_buffer, *inc_buffer;
     struct fake_endhost_data* inc_edata;
     struct fake_endhost_data* out_edata;
 
-    if(inc_in_progress && !target_recv_done[current_target])
+    if(inc_in_progress && !target_recv_done[current_target] && new_timeslot)
         inc_missed++;
     if(!inc_in_progress && !target_recv_done[current_target]) {
         inc_edata = inc_data_map[current_target];
@@ -256,7 +260,7 @@ static void start_new_transfers() {
         }
     }
 
-    if(out_in_progress && !target_send_done[current_target])
+    if(out_in_progress && !target_send_done[current_target] && new_timeslot)
         out_missed++;
     if(!out_in_progress && !target_send_done[current_target]) {
         out_edata = out_data_map[current_target];
@@ -271,7 +275,9 @@ static void start_new_transfers() {
     }
 }
 
-static void check_transfer_states() {
+static int check_transfer_states() {
+    int ret = 0;
+
     if(inc_in_progress) {
         int inc_done = 0;
         MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
@@ -286,6 +292,7 @@ static void check_transfer_states() {
                 }
             }
             inc_in_progress = 0;
+            ret = 1;
         }
     }
 
@@ -305,9 +312,11 @@ static void check_transfer_states() {
                 }
             }
             out_in_progress = 0;
+            ret = 1;
         }
     }
 
+    return ret;
 }
 
 // Don't use this. MPI_Request_free is _not_ safe and will cause segfaults.
@@ -347,7 +356,6 @@ static void terminate_transfers_and_wait() {
                 }
             }
         }
-
         inc_in_progress = 0;
     }
     if(out_in_progress) {
@@ -374,7 +382,6 @@ static void terminate_transfers_and_wait() {
                 }
             }
         }
-
         out_in_progress = 0;
     }
 }
@@ -394,7 +401,6 @@ static void wait_for_transfers() {
                 targets_done++;
             }
         }
-
         inc_in_progress = 0;
     }
 
@@ -414,7 +420,6 @@ static void wait_for_transfers() {
                 targets_done++;
             }
         }
-
         out_in_progress = 0;
     }
 }
@@ -518,7 +523,7 @@ int run_bulk_endhost() {
                     // terminate_transfers_and_wait();
                     // if(my_rotor != 0)
                     //     break;
-                    start_new_transfers();
+                    start_new_transfers(1);
                     start_timeslot_recv();
                     break;
                 case 1:
@@ -529,7 +534,8 @@ int run_bulk_endhost() {
                     break;
             }
         }
-        check_transfer_states();
+        if(check_transfer_states() == 1)
+            start_new_transfers(0);
     }
 
 endhost_done:
