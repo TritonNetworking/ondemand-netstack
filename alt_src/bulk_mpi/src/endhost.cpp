@@ -14,8 +14,7 @@
 #include "stats.h"
 #include "fake_data.h"
 #include "sha256.h"
-
-#include "bulk_app.h"
+#include "transport.h"
 
 static uint64_t now;
 static uint my_rank, my_id, my_rotor;
@@ -49,7 +48,14 @@ static char ts_buffer[SYNC_PKT_SIZE];
 
 static uint64_t started_run, ended_run;
 
+extern TransportBase *transport;
 extern CommBase *sync_comm, *data_comm;
+extern RequestBase *new_request();
+extern RequestBase *new_requests(int count);
+extern StatusBase *new_status();
+extern void free_request(RequestBase *request);
+extern void free_requests(RequestBase *requests);
+extern void free_status(StatusBase *status);
 
 struct delta_stats {
     uint64_t entries[NUM_STAT_ENTRIES];

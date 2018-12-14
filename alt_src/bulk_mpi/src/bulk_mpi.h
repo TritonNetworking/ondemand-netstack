@@ -1,6 +1,5 @@
 #include "transport.h"
 #include "mpi_transport.h"
-#include "bulk_app.h"
 
 extern TransportBase *transport;
 extern CommBase *data_comm, *sync_comm;

@@ -14,8 +14,14 @@
 #include "pkt_crafter.h"
 #include "run_funcs.h"
 #include "stats.h"
+#include "transport.h"
 
-#include "bulk_app.h"
+extern TransportBase *transport;
+extern CommBase *data_comm, *sync_comm;
+extern RequestBase *new_request();
+extern RequestBase *new_requests(int count);
+extern void free_request(RequestBase *request);
+extern void free_requests(RequestBase *requests);
 
 static uint64_t now, next_trigger_real, next_trigger_virt;
 static uint64_t period_ns, guard_time, prealloc_delay;

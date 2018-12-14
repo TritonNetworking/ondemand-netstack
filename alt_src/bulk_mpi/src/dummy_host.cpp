@@ -12,7 +12,12 @@
 #include "pkt_crafter.h"
 #include "run_funcs.h"
 #include "stats.h"
-#include "bulk_app.h"
+#include "transport.h"
+
+extern TransportBase *transport;
+extern CommBase *data_comm, *sync_comm;
+extern RequestBase *new_request();
+extern void free_request(RequestBase *request);
 
 static void warmup_dummy_connection(int control_host) {
     char warmup_buf[128];

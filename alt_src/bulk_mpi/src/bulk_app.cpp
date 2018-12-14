@@ -13,7 +13,6 @@
 #include "run_funcs.h"
 #include "stats.h"
 #include "transport.h"
-#include "mpi_transport.h"
 
 char* config_file;
 uint64_t base_time;
@@ -26,12 +25,6 @@ uint64_t *global_stats = NULL;
 int global_stats_cnt = -1;
 
 extern void init_transport();
-extern RequestBase *new_request();
-extern RequestBase *new_requests(int count);
-extern StatusBase *new_status();
-extern void free_request(RequestBase *request);
-extern void free_requests(RequestBase *requests);
-extern void free_status(StatusBase *status);
 
 int load_yaml_config(char* filename) {
     bulk_config = YAML::LoadFile(config_file);
