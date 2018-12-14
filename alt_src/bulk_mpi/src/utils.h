@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string>
+#include <cstring>
 #include <time.h>
 #include "transport.h"
 #include <unistd.h>
