@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 PROJECT(BULK_MPI CXX)
 
-SET(CMAKE_C_COMPILER /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpicc)
-SET(CMAKE_CXX_COMPILER /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpicxx)
+find_package(MPI REQUIRED)
+include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 
 FILE(GLOB bulk_mpi_SRC
     "*.h"

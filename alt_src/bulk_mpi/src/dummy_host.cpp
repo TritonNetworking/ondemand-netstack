@@ -12,11 +12,11 @@
 #include "pkt_crafter.h"
 #include "run_funcs.h"
 #include "stats.h"
+#include "bulk_app.h"
 
 static void warmup_dummy_connection(int control_host) {
     char warmup_buf[128];
-    MPI_Recv(warmup_buf, 128, MPI_CHAR, control_host,
-              MPI_ANY_TAG, sync_comm, MPI_STATUS_IGNORE);
+    transport->Recv(warmup_buf, 128, control_host, sync_comm);
 }
 
 int run_as_dummy() {
@@ -30,15 +30,16 @@ int run_as_dummy() {
     for(int i = 0; i < warmup_iters; i++)
         warmup_dummy_connection(control_host);
 
-    MPI_Barrier(sync_comm);
+    transport->Barrier(sync_comm);
 
     while(true) {
-        MPI_Request dummy_req;
+        RequestBase *dummy_req = new_request();
         int dummy_recv_done = 0;
-        MPI_Irecv(dummy_buffer, SYNC_PKT_SIZE, MPI_CHAR, control_host,
-                  MPI_ANY_TAG, sync_comm, &dummy_req);
+        transport->Irecv(dummy_buffer, SYNC_PKT_SIZE, control_host,
+                  sync_comm, dummy_req);
         while(!dummy_recv_done)
-            MPI_Test(&dummy_req, &dummy_recv_done, MPI_STATUS_IGNORE);
+            transport->Test(dummy_req, &dummy_recv_done);
+        free_request(dummy_req);
         record_stats_entry();
 
         if (is_magic_pkt(dummy_buffer, SYNC_PKT_SIZE, done_magic)) {
