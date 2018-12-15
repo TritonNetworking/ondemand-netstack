@@ -123,7 +123,7 @@ int MPITransport::Recv(char *buf, size_t size, int src, CommBase *_comm) {
 int MPITransport::Waitall(int count, RequestBase *_requests) {
     MPIRequest *requests = dynamic_cast<MPIRequest *>(_requests);
     fprintf(stderr, "sizeof(MPIRequest) = %zu, sizeof(MPI_Request) = %zu.\n", sizeof(MPIRequest), sizeof(MPI_Request));
-    MPI_Waitall(count, (MPI_Request *)requests, MPI_STATUSES_IGNORE);
+    return MPI_Waitall(count, (MPI_Request *)requests, MPI_STATUSES_IGNORE);
 }
 
 int MPITransport::Test(RequestBase *_request, int *flag, StatusBase *_status) {
@@ -134,12 +134,12 @@ int MPITransport::Test(RequestBase *_request, int *flag, StatusBase *_status) {
 
 int MPITransport::Test_cancelled(StatusBase *_status, int*flag) {
     MPIStatus *status = dynamic_cast<MPIStatus *>(_status);
-    MPI_Test_cancelled(&status->mpi_status, flag);
+    return MPI_Test_cancelled(&status->mpi_status, flag);
 }
 
 int MPITransport::Cancel(RequestBase *_request) {
     MPIRequest *request = dynamic_cast<MPIRequest *>(_request);
-    MPI_Cancel(&request->mpi_request);
+    return MPI_Cancel(&request->mpi_request);
 }
 
 int MPITransport::get_world_rank() {
