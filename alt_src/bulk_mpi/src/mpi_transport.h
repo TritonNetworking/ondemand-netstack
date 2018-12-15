@@ -151,7 +151,7 @@ int MPITransport::get_data_rank() {
 }
 
 int MPITransport::get_sync_rank() {
-        return sync_rank;
+    return sync_rank;
 }
 
 MPIComm::MPIComm(std::string name) : CommBase(name) {
