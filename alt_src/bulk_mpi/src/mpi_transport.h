@@ -12,24 +12,24 @@ class MPIComm;
 // MPI Transport
 class MPITransport : public TransportBase {
 public:
-    void Setup(MPIComm *data_comm, MPIComm *sync_comm);
-    void Teardown();
-    void Abort(int code);
-    //void Warmup(int iterations);
+    void Setup(CommBase *data_comm, CommBase *sync_comm) override;
+    void Teardown() override;
+    void Abort(int code) override;
+    //void Warmup(int iterations) override;
 
-    void Barrier(MPIComm *comm);
-    int Isend(char *buf, size_t size, int dst, MPIComm *comm, MPIRequest *request);
-    int Irecv(char *buf, size_t size, int src, MPIComm *comm, MPIRequest *request);
-    int Send(char *buf, size_t size, int dst, MPIComm *comm);
-    int Recv(char *buf, size_t size, int src, MPIComm *comm);
-    int Waitall(int count, MPIRequest *requests);
-    int Test(MPIRequest *request, int *flag, MPIStatus *status = NULL);
-    int Test_cancelled(MPIStatus *status, int*flag);
-    int Cancel(MPIRequest *request);
+    void Barrier(CommBase *comm) override;
+    int Isend(char *buf, size_t size, int dst, CommBase *comm, RequestBase *request) override;
+    int Irecv(char *buf, size_t size, int src, CommBase *comm, RequestBase *request) override;
+    int Send(char *buf, size_t size, int dst, CommBase *comm) override;
+    int Recv(char *buf, size_t size, int src, CommBase *comm) override;
+    int Waitall(int count, RequestBase *requests) override;
+    int Test(RequestBase *request, int *flag, StatusBase *status = NULL) override;
+    int Test_cancelled(StatusBase *status, int*flag) override;
+    int Cancel(RequestBase *request) override;
 
-    int get_world_rank();
-    int get_data_rank();
-    int get_sync_rank();
+    int get_world_rank() override;
+    int get_data_rank() override;
+    int get_sync_rank() override;
 
 private:
     int world_size, data_world_size, sync_world_size;
@@ -54,7 +54,9 @@ public:
     MPI_Comm *mpi_comm;
 };
 
-void MPITransport::Setup(MPIComm *data_comm, MPIComm *sync_comm) {
+void MPITransport::Setup(CommBase *_data_comm, CommBase *_sync_comm) {
+    MPIComm *data_comm = dynamic_cast<MPIComm *>(_data_comm);
+    MPIComm *sync_comm = dynamic_cast<MPIComm *>(_sync_comm);
     MPI_Init(NULL, NULL);
 
     // Setup global MPI
@@ -91,40 +93,52 @@ void MPITransport::Warmup(int iterations) {
 }
 */
 
-void MPITransport::Barrier(MPIComm *comm) {
+void MPITransport::Barrier(CommBase *_comm) {
+    MPIComm *comm = dynamic_cast<MPIComm *>(_comm);
     MPI_Barrier(*comm->mpi_comm);
 }
 
-int MPITransport::Isend(char *buf, size_t size, int dst, MPIComm *comm, MPIRequest *request) {
+int MPITransport::Isend(char *buf, size_t size, int dst, CommBase *_comm, RequestBase *_request) {
+    MPIComm *comm = dynamic_cast<MPIComm *>(_comm);
+    MPIRequest *request = dynamic_cast<MPIRequest *>(_request);
     return MPI_Isend(buf, (int)size, MPI_CHAR, dst, MPI_ANY_TAG, *comm->mpi_comm, &request->mpi_request);
 }
 
-int MPITransport::Irecv(char *buf, size_t size, int src, MPIComm *comm, MPIRequest *request) {
+int MPITransport::Irecv(char *buf, size_t size, int src, CommBase *_comm, RequestBase *_request) {
+    MPIComm *comm = dynamic_cast<MPIComm *>(_comm);
+    MPIRequest *request = dynamic_cast<MPIRequest *>(_request);
     return MPI_Irecv(buf, (int)size, MPI_CHAR, src, MPI_ANY_TAG, *comm->mpi_comm, &request->mpi_request);
 }
 
-int MPITransport::Send(char *buf, size_t size, int dst, MPIComm *comm) {
+int MPITransport::Send(char *buf, size_t size, int dst, CommBase *_comm) {
+    MPIComm *comm = dynamic_cast<MPIComm *>(_comm);
     return MPI_Send(buf, (int)size, MPI_CHAR, dst, MPI_ANY_TAG, *comm->mpi_comm);
 }
 
-int MPITransport::Recv(char *buf, size_t size, int src, MPIComm *comm) {
+int MPITransport::Recv(char *buf, size_t size, int src, CommBase *_comm) {
+    MPIComm *comm = dynamic_cast<MPIComm *>(_comm);
     return MPI_Recv(buf, (int)size, MPI_CHAR, src, MPI_ANY_TAG, *comm->mpi_comm, MPI_STATUS_IGNORE);
 }
 
-int MPITransport::Waitall(int count, MPIRequest *requests) {
+int MPITransport::Waitall(int count, RequestBase *_requests) {
+    MPIRequest *requests = dynamic_cast<MPIRequest *>(_requests);
     fprintf(stderr, "sizeof(MPIRequest) = %zu, sizeof(MPI_Request) = %zu.\n", sizeof(MPIRequest), sizeof(MPI_Request));
     MPI_Waitall(count, (MPI_Request *)requests, MPI_STATUSES_IGNORE);
 }
 
-int MPITransport::Test(MPIRequest *request, int *flag, MPIStatus *status) {
+int MPITransport::Test(RequestBase *_request, int *flag, StatusBase *_status) {
+    MPIRequest *request = dynamic_cast<MPIRequest *>(_request);
+    MPIStatus *status = dynamic_cast<MPIStatus *>(_status);
     return MPI_Test(&request->mpi_request, flag, status != NULL ? &status->mpi_status : MPI_STATUS_IGNORE);
 }
 
-int MPITransport::Test_cancelled(MPIStatus *status, int*flag) {
+int MPITransport::Test_cancelled(StatusBase *_status, int*flag) {
+    MPIStatus *status = dynamic_cast<MPIStatus *>(_status);
     MPI_Test_cancelled(&status->mpi_status, flag);
 }
 
-int MPITransport::Cancel(MPIRequest *request) {
+int MPITransport::Cancel(RequestBase *_request) {
+    MPIRequest *request = dynamic_cast<MPIRequest *>(_request);
     MPI_Cancel(&request->mpi_request);
 }
 
