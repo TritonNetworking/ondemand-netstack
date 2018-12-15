@@ -5,7 +5,7 @@ find_package(MPI REQUIRED)
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 
 set(HEADERS
-    bulk_app.cpp
+    bulk_app.h
     control_host.cpp
     dummy_host.cpp
     endhost.cpp
@@ -21,12 +21,12 @@ set(HEADERS
 
 set(BULK_MPI_SRC
     mpi_transport.h
-    bulk_mpi.h
+    bulk_mpi.cpp
 )
 
 set(BULK_RDMA_SRC
     rdma_transport.h
-    bulk_rdma.h
+    bulk_rdma.cpp
 )
 
 ADD_EXECUTABLE(bulk_mpi ${HEADERS} ${BULK_MPI_SRC})
