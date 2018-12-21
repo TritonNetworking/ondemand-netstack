@@ -4,7 +4,12 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>
+
+#define USE_GETRANDOM 0
+
+#if __linux__
 #include <sys/random.h>
+#endif
 
 #include "fake_data.h"
 
@@ -45,7 +50,14 @@ int fill_endhost_data(struct fake_endhost_data* edata) {
             return -1;
         // for (int k = 0; k < edata->buf_size; k++)
         //     edata->data_arrs[i][k] = (char)(rand() % 256);
+#if __linux__
         getrandom(edata->data_arrs[i], edata->buf_size, 0);
+#else
+        srand(time(NULL));
+        for (int n = 0; n < edata->buf_size; n++) {
+            edata->data_arrs[i][n] = (char)rand();
+        }
+#endif
     }
 
     edata->write_index = edata->num_bufs;
