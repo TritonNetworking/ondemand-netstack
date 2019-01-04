@@ -35,7 +35,7 @@ int reset_endhost_data(struct fake_endhost_data* edata) {
         if(edata->data_arrs[i] == NULL)
             return -1;
         memset(edata->data_arrs[i], 0,
-               sizeof(char) * edata->buf_size);
+               sizeof(char) * (size_t)edata->buf_size);
     }
 
     return 0;
@@ -53,7 +53,7 @@ int fill_endhost_data(struct fake_endhost_data* edata) {
 #if __linux__
         getrandom(edata->data_arrs[i], edata->buf_size, 0);
 #else
-        srand(time(NULL));
+        srand(static_cast<unsigned int>(time(NULL)));
         for (int n = 0; n < edata->buf_size; n++) {
             edata->data_arrs[i][n] = (char)rand();
         }
@@ -81,13 +81,13 @@ struct fake_endhost_data* allocate_fake_data(
     edata->buf_size = buf_size;
     edata->num_bufs = num_bufs;
 
-    edata->data_arrs = new char*[num_bufs];
+    edata->data_arrs = new char*[(size_t)num_bufs];
     if(edata->data_arrs == NULL)
         goto fail_alloc;
-    memset(edata->data_arrs, 0, sizeof(char*) * num_bufs);
+    memset(edata->data_arrs, 0, sizeof(char*) * (size_t)num_bufs);
 
     for (int i = 0; i < num_bufs; i++) {
-        edata->data_arrs[i] = new char[buf_size];
+        edata->data_arrs[i] = new char[(size_t)buf_size];
         if(edata->data_arrs[i] == NULL){
             goto fail_alloc;
         }
