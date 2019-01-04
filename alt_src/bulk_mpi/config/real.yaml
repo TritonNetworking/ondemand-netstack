@@ -22,7 +22,7 @@ dummy_magic: 0x73796e63
 endhost_magic: 0xbeefcafe
 done_magic: 0xdeadd00d
 
-hostname_to_rank:
+hostname_to_id:
   b09-30: 0
   b09-32: 1
   b09-34: 2
