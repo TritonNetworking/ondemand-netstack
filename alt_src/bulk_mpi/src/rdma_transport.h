@@ -12,7 +12,7 @@ struct RDMAStatus;
 class RDMAComm;
 
 // RDMA Transport
-class RDMATransport : TransportBase {
+class RDMATransport : public TransportBase {
 public:
     void Setup(CommBase *data_comm, CommBase *sync_comm) override;
     void Teardown() override;
@@ -41,12 +41,10 @@ private:
 
 struct RDMARequest : public RequestBase {
 public:
-    MPI_Request mpi_request;
 };
 
 struct RDMAStatus: public StatusBase {
 public:
-    MPI_Status mpi_status;
 };
 
 class RDMAComm : public CommBase {
