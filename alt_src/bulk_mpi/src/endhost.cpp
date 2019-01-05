@@ -582,10 +582,9 @@ endhost_done:
 }
 
 int run_as_endhost(uint rank_val) {
-    bool send_bulk_data = load_or_abort(bulk_config, "send_bulk_data").as<bool>();
     my_rank = rank_val;
 
-    if(send_bulk_data)
+    if(config.send_bulk_data)
         return run_bulk_endhost();
     else
         return run_as_dummy();

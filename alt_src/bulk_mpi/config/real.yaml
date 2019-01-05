@@ -22,16 +22,6 @@ dummy_magic: 0x73796e63
 endhost_magic: 0xbeefcafe
 done_magic: 0xdeadd00d
 
-hostname_to_id:
-  b09-30: 0
-  b09-32: 1
-  b09-34: 2
-  b09-36: 3
-  b09-38: 4
-  b09-40: 5
-  b09-42: 6
-  b09-44: 7
-
 id_to_rank:
   0: [0,8,16,24]
   1: [1,9,17,25]
