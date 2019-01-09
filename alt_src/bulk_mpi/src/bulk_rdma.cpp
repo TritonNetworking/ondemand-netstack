@@ -1,26 +1,26 @@
 #include "transport.h"
-#include "mpi_transport.h"
+#include "rdma_transport.h"
 #include "bulk_app.h"
 
 extern TransportBase *transport;
 extern CommBase *data_comm, *sync_comm;
 
 void init_transport() {
-    data_comm = new MPIComm("data comm");
-    sync_comm = new MPIComm("sync comm");
-    transport = new MPITransport();
+    data_comm = new RDMAComm("data comm");
+    sync_comm = new RDMAComm("sync comm");
+    transport = new RDMATransport();
 }
 
 RequestBase *new_request() {
-    return new MPIRequest();
+    return new RDMARequest();
 }
 
 RequestBase *new_requests(int count) {
-    return new MPIRequest[count];
+    return new RDMARequest[count];
 }
 
 StatusBase *new_status() {
-    return new MPIStatus();
+    return new RDMAStatus();
 }
 
 void free_request(RequestBase *request) {

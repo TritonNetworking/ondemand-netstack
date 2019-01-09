@@ -1,13 +1,36 @@
 cmake_minimum_required(VERSION 3.5)
 PROJECT(BULK_MPI CXX)
 
-SET(CMAKE_C_COMPILER /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpicc)
-SET(CMAKE_CXX_COMPILER /usr/mpi/gcc/openmpi-3.1.1rc1/bin/mpicxx)
+find_package(MPI REQUIRED)
+include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 
-FILE(GLOB bulk_mpi_SRC
-    "*.h"
-    "*.cpp"
+set(HEADERS
+    bulk_app.h
+    control_host.cpp
+    dummy_host.cpp
+    endhost.cpp
+    fake_data.cpp
+    fake_data.h
+    globals.h
+    pkt_crafter.h
+    run_funcs.h
+    stats.h
+    transport.h
+    utils.h
 )
 
-ADD_EXECUTABLE(bulk_mpi ${bulk_mpi_SRC})
-TARGET_LINK_LIBRARIES(bulk_mpi yaml-cpp sha256)
+set(BULK_MPI_SRC
+    mpi_transport.h
+    bulk_mpi.cpp
+)
+
+set(BULK_RDMA_SRC
+    rdma_transport.h
+    bulk_rdma.cpp
+)
+
+ADD_EXECUTABLE(bulk_mpi ${HEADERS} ${BULK_MPI_SRC})
+TARGET_LINK_LIBRARIES(bulk_mpi yaml-cpp sha256 ${MPI_CXX_LIBRARIES})
+
+ADD_EXECUTABLE(bulk_rdma ${HEADERS} ${BULK_RDMA_SRC})
+TARGET_LINK_LIBRARIES(bulk_rdma yaml-cpp sha256 ${MPI_CXX_LIBRARIES})

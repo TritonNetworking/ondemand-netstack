@@ -2,9 +2,15 @@
 #define BULKMPI_UTILS_H_
 
 #include <stdio.h>
+#include <string>
+#include <cstring>
 #include <time.h>
+#include "transport.h"
+#include <unistd.h>
 #include <mpi.h>
 #include "yaml-cpp/yaml.h"
+
+extern TransportBase *transport;
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -37,7 +43,7 @@ static YAML::Node load_or_abort(YAML::Node &config, const char* key) {
     YAML::Node retval = config[key];
     if (retval.Type() == YAML::NodeType::Undefined) {
         fprintf(stderr, "Failed to load '%s' from the config!\n", key);
-        MPI_Abort(MPI_COMM_WORLD, -1);
+        transport->Abort(-1);
     }
     return retval;
 }
@@ -50,6 +56,22 @@ static void wait_for_debugger() {
     fflush(stdout);
     while (0 == i)
         sleep(5);
+}
+
+static std::string get_short_hostname() {
+    const int HOSTNAME_LEN = 256;
+    char hostname[HOSTNAME_LEN], hostname_copy[HOSTNAME_LEN];
+    if (gethostname(hostname, HOSTNAME_LEN) != 0) {
+        perror("gethostname");
+        return std::string();
+    }
+
+    strcpy(hostname_copy, hostname);
+    char *shortname = strtok(hostname_copy, ".");
+    if (shortname == NULL)
+        shortname = hostname;
+
+    return std::string(shortname);
 }
 
 #endif
