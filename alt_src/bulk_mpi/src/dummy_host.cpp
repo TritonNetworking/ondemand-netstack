@@ -12,16 +12,11 @@
 #include "pkt_crafter.h"
 #include "run_funcs.h"
 #include "stats.h"
-#include "transport.h"
-
-extern TransportBase *transport;
-extern CommBase *data_comm, *sync_comm;
-extern RequestBase *new_request();
-extern void free_request(RequestBase *request);
 
 static void warmup_dummy_connection(int control_host) {
     char warmup_buf[128];
-    transport->Recv(warmup_buf, 128, control_host, sync_comm);
+    MPI_Recv(warmup_buf, 128, MPI_CHAR, control_host,
+              MPI_ANY_TAG, sync_comm, MPI_STATUS_IGNORE);
 }
 
 int run_as_dummy() {
@@ -35,16 +30,15 @@ int run_as_dummy() {
     for(int i = 0; i < warmup_iters; i++)
         warmup_dummy_connection(control_host);
 
-    transport->Barrier(sync_comm);
+    MPI_Barrier(sync_comm);
 
     while(true) {
-        RequestBase *dummy_req = new_request();
+        MPI_Request dummy_req;
         int dummy_recv_done = 0;
-        transport->Irecv(dummy_buffer, SYNC_PKT_SIZE, control_host,
-                  sync_comm, dummy_req);
+        MPI_Irecv(dummy_buffer, SYNC_PKT_SIZE, MPI_CHAR, control_host,
+                  MPI_ANY_TAG, sync_comm, &dummy_req);
         while(!dummy_recv_done)
-            transport->Test(dummy_req, &dummy_recv_done);
-        free_request(dummy_req);
+            MPI_Test(&dummy_req, &dummy_recv_done, MPI_STATUS_IGNORE);
         record_stats_entry();
 
         if (is_magic_pkt(dummy_buffer, SYNC_PKT_SIZE, done_magic)) {

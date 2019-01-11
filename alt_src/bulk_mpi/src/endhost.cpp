@@ -14,7 +14,6 @@
 #include "stats.h"
 #include "fake_data.h"
 #include "sha256.h"
-#include "transport.h"
 
 static uint64_t now;
 static uint my_rank, my_id, my_rotor;
@@ -40,22 +39,13 @@ static std::map<int, struct fake_endhost_data*> inc_data_map, out_data_map;
 
 static uint64_t timeslot_received, ts_allocation, ts_end, ts_fill, ns_per_send;
 // static uint64_t ts_send_allocation, ts_recv_allocation;
-static RequestBase *ts_request, *inc_request, *out_request;
+static MPI_Request ts_request, inc_request, out_request;
 static int out_target, inc_target;
 static int out_bytes, inc_bytes;
 static int tsq_in_progress, inc_in_progress, out_in_progress;
 static char ts_buffer[SYNC_PKT_SIZE];
 
 static uint64_t started_run, ended_run;
-
-extern TransportBase *transport;
-extern CommBase *sync_comm, *data_comm;
-extern RequestBase *new_request();
-extern RequestBase *new_requests(int count);
-extern StatusBase *new_status();
-extern void free_request(RequestBase *request);
-extern void free_requests(RequestBase *requests);
-extern void free_status(StatusBase *status);
 
 struct delta_stats {
     uint64_t entries[NUM_STAT_ENTRIES];
@@ -161,21 +151,21 @@ static void free_mappings() {
 
 static void warmup_sync_connections() {
     char fakebuf[64];
-    transport->Recv(fakebuf, 64, control_host, sync_comm);
+    MPI_Recv(fakebuf, 64, MPI_CHAR, control_host, MPI_ANY_TAG, sync_comm, MPI_STATUS_IGNORE);
 }
 
 static void warmup_data_connections() {
-    auto *warmup_sends = new_requests(num_targets);
-    auto *warmup_recvs = new_requests(num_targets);
+    MPI_Request warmup_sends[num_targets];
+    MPI_Request warmup_recvs[num_targets];
     char random_send[1024];
     char random_recv[num_targets][1024];
 
     int i = 0;
     for(auto it = ts_to_target.begin(); it != ts_to_target.end(); it++){
-        transport->Isend(&random_send[0], 1024, it->second,
-                  data_comm, &warmup_sends[i]);
-        transport->Irecv(&random_recv[i][0], 1024, it->second,
-                  data_comm, &warmup_recvs[i]);
+        MPI_Isend(&random_send[0], 1024, MPI_CHAR, it->second,
+                  0, data_comm, &warmup_sends[i]);
+        MPI_Irecv(&random_recv[i][0], 1024, MPI_CHAR, it->second,
+                  MPI_ANY_TAG, data_comm, &warmup_recvs[i]);
         i++;
     }
 
@@ -184,9 +174,9 @@ static void warmup_data_connections() {
     //     printf("%d, ", it->second);
     // }
     // printf("\n");
-    transport->Waitall(num_targets, warmup_sends);
+    MPI_Waitall(num_targets, &warmup_sends[0], MPI_STATUSES_IGNORE);
     // printf("#%d: Sends done.\n", my_rank);
-    transport->Waitall(num_targets, warmup_recvs);
+    MPI_Waitall(num_targets, &warmup_recvs[0], MPI_STATUSES_IGNORE);
     // printf("#%d: Recvs done.\n", my_rank);
 }
 
@@ -232,8 +222,8 @@ static void start_timeslot_recv() {
     if(tsq_in_progress)
         return;
 
-    transport->Irecv(ts_buffer, SYNC_PKT_SIZE, control_host,
-              sync_comm, ts_request);
+    MPI_Irecv(ts_buffer, SYNC_PKT_SIZE, MPI_CHAR, control_host,
+              MPI_ANY_TAG, sync_comm, &ts_request);
     tsq_in_progress = 1;
 }
 
@@ -242,7 +232,7 @@ static int check_for_timeslot() {
         start_timeslot_recv();
 
     int tsq_done = 0;
-    transport->Test(ts_request, &tsq_done);
+    MPI_Test(&ts_request, &tsq_done, MPI_STATUS_IGNORE);
     if (tsq_done){
         // timeslot_received = get_time_ns();
         tsq_in_progress = 0;
@@ -263,8 +253,8 @@ static void start_new_transfers(int new_timeslot) {
         inc_edata = inc_data_map[current_target];
         if(recv_next_endhost_data(inc_edata, &inc_buffer, &inc_bytes) == 0){
             inc_bytes = std::min((uint64_t)inc_bytes, ts_allocation);
-            transport->Irecv(inc_buffer, inc_bytes, current_target,
-                      data_comm, inc_request);
+            MPI_Irecv(inc_buffer, inc_bytes, MPI_CHAR, current_target,
+                      MPI_ANY_TAG, data_comm, &inc_request);
             inc_in_progress = 1;
             inc_target = current_target;
         }
@@ -277,8 +267,8 @@ static void start_new_transfers(int new_timeslot) {
         if(send_next_endhost_data(out_edata, &out_buffer, &out_bytes) == 0){
             out_bytes = std::min((uint64_t)out_bytes, ts_allocation);
             bulk_started = get_time_ns();
-            transport->Isend(out_buffer, out_bytes, current_target,
-                      data_comm, out_request);
+            MPI_Isend(out_buffer, out_bytes, MPI_CHAR, current_target,
+                      0, data_comm, &out_request);
             out_in_progress = 1;
             out_target = current_target;
         }
@@ -290,7 +280,7 @@ static int check_transfer_states() {
 
     if(inc_in_progress) {
         int inc_done = 0;
-        transport->Test(inc_request, &inc_done);
+        MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
         if(inc_done) {
             if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
                 target_recv_done[inc_target] = true;
@@ -308,7 +298,7 @@ static int check_transfer_states() {
 
     if(out_in_progress) {
         int out_done = 0;
-        transport->Test(out_request, &out_done);
+        MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
         if(out_done){
             bulk_done = get_time_ns();
             bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
@@ -345,16 +335,15 @@ static int check_transfer_states() {
 
 static void terminate_transfers_and_wait() {
     if(inc_in_progress) {
-        transport->Cancel(inc_request);
+        MPI_Cancel(&inc_request);
 
         int inc_done = 0;
-        auto *inc_status = new_status();
+        MPI_Status inc_status;
         while(!inc_done)
-            transport->Test(inc_request, &inc_done, inc_status);
+            MPI_Test(&inc_request, &inc_done, &inc_status);
 
         int inc_cancelled = 0;
-        transport->Test_cancelled(inc_status, &inc_cancelled);
-        free_status(inc_status);
+        MPI_Test_cancelled(&inc_status, &inc_cancelled);
 
         if(!inc_cancelled){
             if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
@@ -370,16 +359,15 @@ static void terminate_transfers_and_wait() {
         inc_in_progress = 0;
     }
     if(out_in_progress) {
-        transport->Cancel(out_request);
+        MPI_Cancel(&out_request);
 
         int out_done = 0;
-        auto *out_status = new_status();
+        MPI_Status out_status;
         while(!out_done)
-            transport->Test(out_request, &out_done, out_status);
+            MPI_Test(&out_request, &out_done, &out_status);
 
         int out_cancelled = 0;
-        transport->Test_cancelled(out_status, &out_cancelled);
-        free_status(out_status);
+        MPI_Test_cancelled(&out_status, &out_cancelled);
 
         if(!out_cancelled){
             bulk_done = get_time_ns();
@@ -402,7 +390,7 @@ static void wait_for_transfers() {
     if(inc_in_progress) {
         int inc_done = 0;
         while(!inc_done)
-            transport->Test(inc_request, &inc_done);
+            MPI_Test(&inc_request, &inc_done, MPI_STATUS_IGNORE);
 
         if(recv_done_endhost_data(inc_data_map[inc_target], inc_bytes) == 1){
             target_recv_done[inc_target] = true;
@@ -419,7 +407,7 @@ static void wait_for_transfers() {
     if(out_in_progress) {
         int out_done = 0;
         while(!out_done)
-            transport->Test(out_request, &out_done);
+            MPI_Test(&out_request, &out_done, MPI_STATUS_IGNORE);
         bulk_done = get_time_ns();
         bulk_stats->entries[bulk_stats->cnt++] = bulk_done - bulk_started;
 
@@ -514,9 +502,6 @@ int run_bulk_endhost() {
     }
 
     setup_endhost_stats();
-    ts_request = new_request();
-    inc_request = new_request();
-    out_request = new_request();
 
     for(int i = 0; i < warmup_iters; i++){
         warmup_sync_connections();
@@ -525,7 +510,7 @@ int run_bulk_endhost() {
 
     printf("my_rank=%d my_id=%d my_rotor=%d\tREADY\n", my_rank, my_id, my_rotor);
 
-    transport->Barrier(sync_comm);
+    MPI_Barrier(sync_comm);
     started_run = get_time_ns();
 
     start_timeslot_recv();
@@ -573,10 +558,6 @@ endhost_done:
 
     free_mappings();
     free_endhost_stats();
-
-    free_request(ts_request);
-    free_request(inc_request);
-    free_request(out_request);
 
     return 0;
 }
