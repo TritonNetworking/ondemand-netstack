@@ -14,14 +14,6 @@
 #include "pkt_crafter.h"
 #include "run_funcs.h"
 #include "stats.h"
-#include "transport.h"
-
-extern TransportBase *transport;
-extern CommBase *data_comm, *sync_comm;
-extern RequestBase *new_request();
-extern RequestBase *new_requests(int count);
-extern void free_request(RequestBase *request);
-extern void free_requests(RequestBase *requests);
 
 static uint64_t now, next_trigger_real, next_trigger_virt;
 static uint64_t period_ns, guard_time, prealloc_delay;
@@ -98,7 +90,8 @@ static void init_control_timing() {
 
 static void warmup_dummy_connection() {
     char warmup_buf[128];
-    transport->Send(warmup_buf, 128, dummy_host, sync_comm);
+    MPI_Send(warmup_buf, 128, MPI_CHAR, dummy_host,
+             0, sync_comm);
 }
 
 static void warmup_sync_connections() {
@@ -106,7 +99,7 @@ static void warmup_sync_connections() {
     for(int i = 0; i < num_hosts; i++) {
         std::vector<int> ranks = id_to_rank[i].as<std::vector<int>>();
         for(int j = 0; j < ranks.size(); j++) {
-            transport->Send(fakebuf, 64, ranks[j], sync_comm);
+            MPI_Send(fakebuf, 64, MPI_CHAR, ranks[j], 0, sync_comm);
         }
     }
 }
@@ -153,26 +146,25 @@ static void load_next_timeslot() {
 
     if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, dummy_magic, next_ts_id, bytes_to_send)){
         fprintf(stderr, "Failed to make sync packet at control host\n");
-        transport->Abort(-1);
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
     if(make_pkt(send_hosts_buf, SYNC_PKT_SIZE, endhost_magic, next_ts_id, bytes_to_send)){
         fprintf(stderr, "Failed to make sync packet at control host\n");
-        transport->Abort(-1);
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
     // printf("%lu: Made sync packets with next_ts_id=%d bytes_to_send=%lu\n", now, next_ts_id, bytes_to_send);
 }
 
 static void send_sync_packets() {
-    RequestBase *to_dummy = new_request();
+    MPI_Request to_dummy;
     int to_dummy_completed = 0;
-    transport->Isend(send_dummy_buf, SYNC_PKT_SIZE, dummy_host,
-               sync_comm, to_dummy);
+    MPI_Isend(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR, dummy_host,
+               0, sync_comm, &to_dummy);
 
     while(!to_dummy_completed)
-        transport->Test(to_dummy, &to_dummy_completed);
-    free_request(to_dummy);
+        MPI_Test(&to_dummy, &to_dummy_completed, MPI_STATUS_IGNORE);
 
     // now = get_time_ns();
     // printf("%lu: Completed sending sync packet to dummy host\n", now);
@@ -183,14 +175,14 @@ static void send_sync_packets() {
     // printf("%lu: Trigger real reached\n", now);
     if (rotor_state != 0) {
         // printf("Sending sync packet to ranks ");
-        RequestBase *to_endhosts = new_requests(num_hosts);
+        MPI_Request to_endhosts[num_hosts];
         int to_endhosts_completed[num_hosts];
         int endhosts_done = 0;
 
         for(int i = 0; i < num_hosts; i++){
             int target = next_targets[i];
-            transport->Isend(send_hosts_buf, SYNC_PKT_SIZE, target,
-                      sync_comm, &to_endhosts[i]);
+            MPI_Isend(send_hosts_buf, SYNC_PKT_SIZE, MPI_CHAR, target,
+                      0, sync_comm, &to_endhosts[i]);
             // printf("%d ", target);
         }
         // printf("\n");
@@ -199,14 +191,13 @@ static void send_sync_packets() {
             endhosts_done = 1;
             for(int i = 0; i < num_hosts; i++){
                 if(to_endhosts_completed[i] == 0){
-                    transport->Test(&to_endhosts[i], &to_endhosts_completed[i]);
+                    MPI_Test(&to_endhosts[i], &to_endhosts_completed[i],
+                             MPI_STATUS_IGNORE);
                     if(to_endhosts_completed[i] == 0)
                         endhosts_done = 0;
                 }
             }
         }
-
-        free_requests(to_endhosts);
 
         // now = get_time_ns();
         // printf("%lu: Sending completed.\n", get_time_ns());
@@ -218,16 +209,16 @@ static void send_sync_packets() {
 static void send_final_packets() {
     if(make_pkt(send_dummy_buf, SYNC_PKT_SIZE, done_magic, 0, 0)){
         fprintf(stderr, "Failed to make final sync packet at control host\n");
-        transport->Abort(-1);
+        MPI_Abort(MPI_COMM_WORLD, -1);
     }
 
-    transport->Send(send_dummy_buf, SYNC_PKT_SIZE,
-             dummy_host, sync_comm);
+    MPI_Send(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR,
+             dummy_host, 0, sync_comm);
     for(int i = 0; i < num_hosts; i++) {
         for (int j = 0; j < num_rotors; j++) {
             int target = id_to_rank[i][j].as<int>();
-            transport->Send(send_dummy_buf, SYNC_PKT_SIZE,
-             target, sync_comm);
+            MPI_Send(send_dummy_buf, SYNC_PKT_SIZE, MPI_CHAR,
+             target, 0, sync_comm);
         }
     }
 }
@@ -245,7 +236,7 @@ int run_as_control() {
 
     printf("Generating fake data...\n");
 
-    transport->Barrier(sync_comm);
+    MPI_Barrier(sync_comm);
 
     printf("...completed. Running test...\n");
 

@@ -61,19 +61,6 @@ endhost_magic: 0xdead
 # Magic value used to shut down endhosts.
 done_magic: 0xd00d
 
-# Mapping from hostname to endhost identifier.
-# Ignored for MPI, but this follows the same convention as MPI allocation
-# Used in RDMA, for example, where hosts are not assigned ids automatically
-hostname_to_id:
-  b09-30: 0
-  b09-32: 1
-  b09-34: 2
-  b09-36: 3
-  b09-38: 4
-  b09-40: 5
-  b09-42: 6
-  b09-44: 7
-
 # Endhost identifiers (e.g. from timeslots) to rank mappings.
 # Each identifier should have an array, where the length of the
 # array is equal to 'num_rotors' and the 'i'-th element at each index
