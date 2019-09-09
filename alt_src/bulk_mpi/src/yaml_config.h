@@ -5,6 +5,8 @@
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
+#include "utils.h"
+
 struct yaml_config {
     uint64_t total_period_ns;
     uint64_t guard_time_ns;
@@ -23,8 +25,8 @@ struct yaml_config {
     std::map<int, std::vector<int>> id_to_rank;
     std::map<int, int> rank_to_id;
     std::map<int, int> rank_to_rotor;
-    int control;
-    int dummy;
+    int control_rank;
+    int dummy_rank;
 
     std::vector<uint> timeslot_order;
     std::map<int, std::map<std::string, int>> timeslots;
@@ -55,16 +57,22 @@ struct yaml_config load_config(char *config_file) {
     config.num_rotors = load_or_abort(bulk_config, "num_rotors").as<int>();
 
     YAML::Node id_to_rank = load_or_abort(bulk_config, "id_to_rank");
-    for(int i = 0; i < num_hosts; i++) {
+    for(int i = 0; i < config.num_hosts; i++) {
         std::vector<int> ranks = id_to_rank[i].as<std::vector<int>>();
         config.id_to_rank.insert({i, ranks});
         for (auto &rank : ranks)
             config.rank_to_id.insert({rank, i});
     }
-    // TODO: fix this
-    config.rank_to_rotor = load_or_abort(bulk_config, "rank_to_rotor");
-    config.control = load_or_abort(id_to_rank, "control").as<int>();
-    config.dummy = load_or_abort(id_to_rank, "dummy").as<int>();
+
+    YAML::Node rank_to_rotor = load_or_abort(bulk_config, "rank_to_rotor");
+    for (auto &pair : config.rank_to_id) {
+        int rank = pair.first;
+        int rotor = rank_to_rotor[rank].as<int>();
+        config.rank_to_rotor.insert({rank, rotor});
+    }
+
+    config.control_rank = load_or_abort(id_to_rank, "control").as<int>();
+    config.dummy_rank = load_or_abort(id_to_rank, "dummy").as<int>();
 
     config.timeslot_order = load_or_abort(bulk_config, "timeslot_order").as<std::vector<uint>>();
     config.timeslots = load_or_abort(bulk_config, "timeslots").as<std::map<int, std::map<std::string, int>>>();

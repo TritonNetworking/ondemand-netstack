@@ -6,11 +6,6 @@
 #include "yaml_config.h"
 #include "run_funcs.h"
 
-// dummy struct
-struct rdma_qp {
-
-};
-
 char* config_file;
 struct yaml_config config;
 uint64_t base_time;
@@ -52,20 +47,19 @@ int usage() {
     return -1;
 }
 
-int run_designated_task(int world_rank, struct yaml_config config) {
-    auto it = config.rank_to_id.find(world_rank);
+int run_designated_task(int rank, struct yaml_config config) {
+    auto it = config.rank_to_id.find(rank);
     if (it == config.rank_to_id.end()) {
         fprintf(stderr, "rank not found in config.\n");
         return -1;
     }
 
-    std::string id = it->second;
-    if (id == "control")
+    if (rank == config.control_rank)
         run_as_control();
-    else if (id == "dummy")
+    else if (rank == config.dummy_rank)
         run_as_dummy();
     else
-        run_as_endhost(world_rank);
+        run_as_endhost(rank);
 
     return 0;
 }
